@@ -18,5 +18,7 @@ rootProject.name = "qhub"
 
 include(
     ":platform-core",
+    ":event-log",
+    ":capabilities:navigation",
     ":app-eastwing",
 )

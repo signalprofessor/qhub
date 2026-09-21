@@ -3,7 +3,9 @@ package com.signalprofessor.qhub.core.capability
 import com.signalprofessor.qhub.core.event.EventFactory
 import com.signalprofessor.qhub.core.event.EventSink
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.Serializable
 
+@Serializable
 @JvmInline
 value class CapabilityId(val value: String) {
     init {

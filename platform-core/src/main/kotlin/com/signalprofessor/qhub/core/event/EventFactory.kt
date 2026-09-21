@@ -3,6 +3,7 @@ package com.signalprofessor.qhub.core.event
 import com.signalprofessor.qhub.core.capability.CapabilityId
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.serialization.json.JsonObject
 
 class EventFactory(
     private val deviceId: String,
@@ -19,11 +20,11 @@ class EventFactory(
         require(initialSequence >= 0) { "initialSequence must be non-negative" }
     }
 
-    fun <P : EventPayload> create(
+    fun create(
         source: CapabilityId,
         eventType: String,
-        payload: P,
-    ): EventEnvelope<P> = EventEnvelope(
+        payload: JsonObject,
+    ): EventEnvelope = EventEnvelope(
         eventId = eventIdFactory(),
         deviceId = deviceId,
         sessionId = sessionId,

@@ -1,12 +1,12 @@
 package com.signalprofessor.qhub.core.event
 
 import com.signalprofessor.qhub.core.capability.CapabilityId
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class EventFactoryTest {
-    private data class TestPayload(val value: Int) : EventPayload
-
     @Test
     fun `factory assigns stable identity dual time and increasing sequence`() {
         val factory = EventFactory(
@@ -17,8 +17,16 @@ class EventFactoryTest {
             eventIdFactory = { "event-id" },
         )
 
-        val first = factory.create(CapabilityId("navigation"), "navigation.state", TestPayload(1))
-        val second = factory.create(CapabilityId("navigation"), "navigation.state", TestPayload(2))
+        val first = factory.create(
+            CapabilityId("navigation"),
+            "navigation.gnss",
+            buildJsonObject { put("latitudeDegrees", 58.0) },
+        )
+        val second = factory.create(
+            CapabilityId("navigation"),
+            "navigation.gnss",
+            buildJsonObject { put("latitudeDegrees", 58.1) },
+        )
 
         assertEquals(7, first.sequence)
         assertEquals(8, second.sequence)

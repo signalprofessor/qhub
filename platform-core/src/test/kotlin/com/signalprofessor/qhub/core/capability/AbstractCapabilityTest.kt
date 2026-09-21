@@ -23,14 +23,12 @@ class AbstractCapabilityTest {
     @Test
     fun `capability follows normal lifecycle`() = runBlocking {
         val capability = TestCapability()
-
         capability.initialize(context)
         capability.configure(CapabilityConfig())
         capability.start()
         capability.pause()
         capability.start()
         capability.stop()
-
         assertEquals(CapabilityState.Stopped, capability.state.value)
         assertEquals(CapabilityState.Stopped, capability.health.value.state)
     }
@@ -38,11 +36,9 @@ class AbstractCapabilityTest {
     @Test
     fun `disabled capability does not start`() = runBlocking {
         val capability = TestCapability()
-
         capability.initialize(context)
         capability.configure(CapabilityConfig(enabled = false))
         capability.start()
-
         assertEquals(CapabilityState.Stopped, capability.state.value)
         assertEquals("Disabled by configuration", capability.health.value.message)
     }

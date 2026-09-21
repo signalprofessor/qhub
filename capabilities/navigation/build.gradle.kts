@@ -1,18 +1,14 @@
 plugins {
-    alias(libs.plugins.android.application)
+    alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
 }
 
 android {
-    namespace = "com.signalprofessor.qhub.eastwing"
+    namespace = "com.signalprofessor.qhub.navigation"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.signalprofessor.qhub.eastwing"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0"
     }
 
     compileOptions {
@@ -27,8 +23,5 @@ android {
 
 dependencies {
     implementation(project(":platform-core"))
-    implementation(project(":event-log"))
-    implementation(project(":capabilities:navigation"))
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.activity.ktx)
 }

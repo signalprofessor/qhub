@@ -19,19 +19,32 @@ Qhub is a modular Android platform for the EastWing drone mission system. The fi
 - Credentials, signing material, production endpoints, and customer data must never be committed.
 - New capabilities should depend on shared contracts, not directly on one another.
 
-## Current foundation
+## Current implementation
 
 - `platform-core`: platform-neutral event and capability contracts
-- `app-eastwing`: minimal Android host application
-- dual-clock event timestamps, identity, schema versioning, and sequence numbers
-- tested capability lifecycle behavior
+- `event-log`: append-only NDJSON logging and deterministic replay
+- `capabilities/navigation`: Pixel GNSS acquisition and raw GNSS event payloads
+- `app-eastwing`: mission start, stop, status, and replay UI
+- dual-clock timestamps, identity, schema versioning, and sequence numbers
+- tested event round trips and capability lifecycle behavior
 
 No source code from the Qulinda Qhub repository has been copied.
+
+## Pixel test
+
+1. Install the debug APK and grant precise location permission.
+2. Go outdoors with GPS enabled.
+3. Press **Start mission** and wait for the event count and position to update.
+4. Walk or drive a short route, then press **Stop mission**.
+5. Press **Replay last mission**. The replay count, final position, and file information should match the recording.
+
+Mission logs are stored in the app-private `files/missions` directory.
 
 ## Build
 
 Use Android Studio's bundled JDK and an installed Android SDK:
 
 ```bash
-./gradlew test :app-eastwing:assembleDebug
+./gradlew clean test :app-eastwing:assembleDebug
+./gradlew :app-eastwing:lintDebug
 ```

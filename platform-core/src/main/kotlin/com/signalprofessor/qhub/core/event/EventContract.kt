@@ -1,13 +1,13 @@
 package com.signalprofessor.qhub.core.event
 
 import com.signalprofessor.qhub.core.capability.CapabilityId
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 const val CURRENT_EVENT_SCHEMA_VERSION: Int = 1
 
-/** Marker for capability-owned event payloads. */
-interface EventPayload
-
 /** Monotonic time orders measurements; UTC time supports backend correlation. */
+@Serializable
 data class EventTimestamp(
     val monotonicNanos: Long,
     val utcEpochMillis: Long,
@@ -18,7 +18,8 @@ data class EventTimestamp(
     }
 }
 
-data class EventEnvelope<out P : EventPayload>(
+@Serializable
+data class EventEnvelope(
     val schemaVersion: Int = CURRENT_EVENT_SCHEMA_VERSION,
     val eventId: String,
     val deviceId: String,
@@ -27,7 +28,7 @@ data class EventEnvelope<out P : EventPayload>(
     val source: CapabilityId,
     val eventType: String,
     val timestamp: EventTimestamp,
-    val payload: P,
+    val payload: JsonObject,
 ) {
     init {
         require(schemaVersion > 0) { "schemaVersion must be positive" }
@@ -40,7 +41,7 @@ data class EventEnvelope<out P : EventPayload>(
 }
 
 fun interface EventSink {
-    suspend fun publish(event: EventEnvelope<EventPayload>)
+    suspend fun publish(event: EventEnvelope)
 }
 
 fun interface QhubClock {
