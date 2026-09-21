@@ -19,6 +19,19 @@ Qhub is a modular Android platform for the EastWing drone mission system. The fi
 - Credentials, signing material, production endpoints, and customer data must never be committed.
 - New capabilities should depend on shared contracts, not directly on one another.
 
-## Status
+## Current foundation
 
-The repository is being established as a clean project. No source code from the Qulinda Qhub repository has been copied.
+- `platform-core`: platform-neutral event and capability contracts
+- `app-eastwing`: minimal Android host application
+- dual-clock event timestamps, identity, schema versioning, and sequence numbers
+- tested capability lifecycle behavior
+
+No source code from the Qulinda Qhub repository has been copied.
+
+## Build
+
+Use Android Studio's bundled JDK and an installed Android SDK:
+
+```bash
+./gradlew test :app-eastwing:assembleDebug
+```

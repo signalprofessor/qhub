@@ -5,6 +5,8 @@ This register records where reused material came from and why it may be used her
 | Component | Source | Source revision | Contributors | Permission | Status |
 |---|---|---|---|---|---|
 | Project architecture | EastWing project planning | Not applicable | Fredrik Gustafsson | Original project work | Approved |
+| Initial platform contracts and EastWing app shell | This repository | Initial implementation | Fredrik Gustafsson with ChatGPT assistance | Original project work | Approved |
+| Gradle wrapper | Local Fredrik-authored Qdrone project; generated Gradle tooling | Gradle 8.13 wrapper | Gradle project | Standard generated build tooling | Approved |
 | Qulinda Qhub components | `eprotection/qhub` | `7ea5ad806ec2ec9a10aaedba6b47f65b9c2093fe` | To be recorded per component | Pending written interim permission | Not imported |
 | Qdrone components | Local Qdrone project | To be recorded | Fredrik Gustafsson | To be confirmed | Not imported |
 | Qauto components | Local Qauto project | To be recorded | Fredrik Gustafsson | To be confirmed | Not imported |
