@@ -114,6 +114,20 @@ class BackendHttpTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual([item["sequence"] for item in result["events"]], [0, 1])
 
+    def test_pressure_event_is_stored_as_raw_telemetry(self):
+        pressure = event(1, "pressure-1")
+        pressure["eventType"] = "navigation.pressure"
+        pressure["payload"] = {
+            "pressureHectopascals": 1008.25,
+            "sensorElapsedRealtimeNanos": 123456789,
+            "sensorAccuracy": 3,
+        }
+        body = (json.dumps(event()) + "\n" + json.dumps(pressure) + "\n").encode()
+        self.assertEqual(self.request("POST", "/v1/events", body)[0], 200)
+        status, result = self.request("GET", "/v1/session-events?sessionId=session-1")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["events"][1]["payload"], pressure["payload"])
+
     def test_conflict_rolls_back_batch(self):
         body = (json.dumps(event(1, "event-1")) + "\n" +
                 json.dumps(event(1, "different-id")) + "\n").encode()

@@ -13,6 +13,9 @@ import com.signalprofessor.qhub.log.NdjsonEventWriter
 import com.signalprofessor.qhub.navigation.GNSS_EVENT_TYPE
 import com.signalprofessor.qhub.navigation.GnssLocationSource
 import com.signalprofessor.qhub.navigation.GnssSample
+import com.signalprofessor.qhub.navigation.PRESSURE_EVENT_TYPE
+import com.signalprofessor.qhub.navigation.PressureSample
+import com.signalprofessor.qhub.navigation.PressureSensorSource
 import com.signalprofessor.qhub.navigation.toEventPayload
 import java.io.File
 import java.text.SimpleDateFormat
@@ -34,6 +37,10 @@ class MissionRecorder(
         ?: UUID.randomUUID().toString().also { identityPreferences.edit().putString("device_id", it).apply() }
 
     private var locationSource: GnssLocationSource? = null
+    private var pressureSource: PressureSensorSource? = null
+    private var pressureAvailable: Boolean? = null
+    private var latestGnssEvent: EventEnvelope? = null
+    private var latestPressureEvent: EventEnvelope? = null
     private var writer: NdjsonEventWriter? = null
     private var factory: EventFactory? = null
     private var eventCount = 0L
@@ -50,12 +57,16 @@ class MissionRecorder(
         val file = File(missionsDirectory, name)
         val pendingWriter = NdjsonEventWriter(file)
         val pendingSource = GnssLocationSource(appContext, ::recordSample)
+        val pendingPressureSource = PressureSensorSource(appContext, ::recordPressure)
 
         writer = pendingWriter
         factory = EventFactory(deviceId, sessionId, AndroidQhubClock)
         locationSource = pendingSource
         eventCount = 0
         lastRecordedEvent = null
+        latestGnssEvent = null
+        latestPressureEvent = null
+        pressureAvailable = null
         startedAtUtcMillis = System.currentTimeMillis()
         currentFile = file
 
@@ -66,12 +77,15 @@ class MissionRecorder(
             clearActiveSession()
             return result
         }
+        pressureAvailable = pendingPressureSource.start() == PressureSensorSource.StartResult.Started
+        if (pressureAvailable == true) pressureSource = pendingPressureSource
         publishRecordingState(null)
         return result
     }
 
     fun stop() {
         locationSource?.stop()
+        pressureSource?.stop()
         writer?.close()
         val completedFile = currentFile
         if (completedFile != null) {
@@ -86,6 +100,9 @@ class MissionRecorder(
             fileSizeBytes = completedFile?.length() ?: 0,
             fileName = completedFile?.name,
             latestEvent = lastRecordedEvent,
+            latestGnssEvent = latestGnssEvent,
+            latestPressureEvent = latestPressureEvent,
+            pressureAvailable = pressureAvailable,
         )
         clearActiveSession()
         onState(finalState)
@@ -108,12 +125,17 @@ class MissionRecorder(
         }
         val replay = EventReplay(events)
         activeReplay = replay
+        latestGnssEvent = null
+        latestPressureEvent = null
+        pressureAvailable = null
 
         fun scheduleNext() {
             val step = Runnable {
                 if (activeReplay !== replay) return@Runnable
                 val event = replay.next() ?: return@Runnable
                 val complete = replay.position == replay.size
+                if (event.eventType == GNSS_EVENT_TYPE) latestGnssEvent = event
+                if (event.eventType == PRESSURE_EVENT_TYPE) latestPressureEvent = event
                 val verification = if (complete) verifyReplay(file, replay.position.toLong(), event) else null
                 onState(
                     MissionState(
@@ -124,6 +146,8 @@ class MissionRecorder(
                             .coerceAtLeast(0) / 1_000_000,
                         fileName = file.name,
                         latestEvent = event,
+                        latestGnssEvent = latestGnssEvent,
+                        latestPressureEvent = latestPressureEvent,
                         replayTotal = replay.size,
                         verification = verification,
                         isReplaying = !complete,
@@ -189,6 +213,21 @@ class MissionRecorder(
         writer?.append(event)
         eventCount += 1
         lastRecordedEvent = event
+        latestGnssEvent = event
+        onRecordedEvent(event)
+        publishRecordingState(event)
+    }
+
+    private fun recordPressure(sample: PressureSample) {
+        val event = factory?.create(
+            source = NAVIGATION_CAPABILITY_ID,
+            eventType = PRESSURE_EVENT_TYPE,
+            payload = sample.toEventPayload(),
+        ) ?: return
+        writer?.append(event)
+        eventCount += 1
+        lastRecordedEvent = event
+        latestPressureEvent = event
         onRecordedEvent(event)
         publishRecordingState(event)
     }
@@ -196,12 +235,16 @@ class MissionRecorder(
     private fun publishRecordingState(event: EventEnvelope?) {
         onState(
             MissionState(
-                status = "Recording GNSS",
+                status = if (pressureAvailable == true) "Recording GNSS + barometer"
+                    else "Recording GNSS (barometer unavailable)",
                 eventCount = eventCount,
                 fileSizeBytes = writer?.sizeBytes() ?: 0,
                 elapsedMillis = (System.currentTimeMillis() - startedAtUtcMillis).coerceAtLeast(0),
                 fileName = currentFile?.name,
                 latestEvent = event,
+                latestGnssEvent = latestGnssEvent,
+                latestPressureEvent = latestPressureEvent,
+                pressureAvailable = pressureAvailable,
                 isRecording = true,
             ),
         )
@@ -220,6 +263,7 @@ class MissionRecorder(
 
     private fun clearActiveSession() {
         locationSource = null
+        pressureSource = null
         writer = null
         factory = null
         currentFile = null
@@ -239,6 +283,9 @@ data class MissionState(
     val elapsedMillis: Long = 0,
     val fileName: String? = null,
     val latestEvent: EventEnvelope? = null,
+    val latestGnssEvent: EventEnvelope? = null,
+    val latestPressureEvent: EventEnvelope? = null,
+    val pressureAvailable: Boolean? = null,
     val replayTotal: Int = 0,
     val verification: String? = null,
     val isRecording: Boolean = false,

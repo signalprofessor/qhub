@@ -23,7 +23,7 @@ Qhub is a modular Android platform for the EastWing drone mission system. The fi
 
 - `platform-core`: platform-neutral event and capability contracts
 - `event-log`: append-only NDJSON logging and deterministic replay
-- `capabilities/navigation`: Pixel GNSS acquisition and raw GNSS event payloads
+- `capabilities/navigation`: Pixel GNSS and barometer acquisition with raw, timestamped event payloads
 - `app-eastwing`: mission recording, replay, export, and opt-in local telemetry UI
 - `backend`: token-protected HTTP ingestion, SQLite storage, and local read-only telemetry dashboard
 - dual-clock timestamps, identity, schema versioning, and sequence numbers
@@ -35,7 +35,7 @@ No source code from the Qulinda Qhub repository has been copied.
 
 1. Install the debug APK and grant precise location permission.
 2. Go outdoors with GPS enabled.
-3. Press **Start mission** and wait for the event count and position to update.
+3. Press **Start mission** and wait for the event count, position, and pressure reading to update. If the device has no pressure sensor, the app says so; GNSS recording still works.
 4. Walk or drive a short route, then press **Stop mission**.
 5. Press **Replay last mission**. The replay count, final position, and file information should match the recording.
 6. Press **Save last mission log** and choose a location, such as Downloads, to export the raw NDJSON file for inspection. This is a local copy, not a backend upload.

@@ -24,4 +24,5 @@ android {
 dependencies {
     implementation(project(":platform-core"))
     implementation(libs.androidx.core.ktx)
+    testImplementation(libs.junit)
 }

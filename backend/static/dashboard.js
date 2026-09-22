@@ -11,6 +11,7 @@ const ui = {
   heading: document.getElementById("heading"),
   accuracy: document.getElementById("accuracy"),
   altitude: document.getElementById("altitude"),
+  pressure: document.getElementById("pressure"),
   count: document.getElementById("event-count"),
   sequence: document.getElementById("sequence"),
   time: document.getElementById("event-time"),
@@ -32,6 +33,8 @@ let polling = false;
 let timer = null;
 let historySession = "";
 let historySequence = -1;
+let latestGnss = null;
+let latestPressure = null;
 const demTile = {west: 535000, east: 537500, south: 6470000, north: 6472500};
 let fixesOnMap = [];
 let view = {east: 536250, north: 6471250, metresPerPixel: 6.3};
@@ -86,7 +89,8 @@ function updateSessions(sessions) {
 }
 
 function showLatest(event, summary) {
-  const payload = event.payload || {};
+  const payload = latestGnss?.payload || {};
+  const pressurePayload = latestPressure?.payload || {};
   const lat = numeric(payload.latitudeDegrees, 6);
   const lon = numeric(payload.longitudeDegrees, 6);
   ui.position.textContent = lat === "—" || lon === "—" ? "—" : lat + ", " + lon;
@@ -94,6 +98,7 @@ function showLatest(event, summary) {
   ui.heading.textContent = numeric(payload.bearingDegrees, 0, "°");
   ui.accuracy.textContent = numeric(payload.horizontalAccuracyMeters, 1);
   ui.altitude.textContent = numeric(payload.altitudeMeters, 1);
+  ui.pressure.textContent = numeric(pressurePayload.pressureHectopascals, 2);
   ui.count.textContent = String(summary.eventCount);
   ui.sequence.textContent = "Latest sequence " + event.sequence;
   const millis = event.timestamp?.utcEpochMillis;
@@ -292,13 +297,19 @@ async function refresh() {
     }
     const latest = await api("/v1/latest?sessionId=" + encodeURIComponent(selectedSession));
     const summary = sessions.find(item => item.sessionId === selectedSession);
-    showLatest(latest.event, summary);
     if (historySession !== selectedSession || historySequence !== summary.lastSequence) {
       const history = await api("/v1/session-events?sessionId=" + encodeURIComponent(selectedSession));
+      latestGnss = null;
+      latestPressure = null;
+      for (const item of history.events) {
+        if (item.eventType === "navigation.gnss") latestGnss = item;
+        if (item.eventType === "navigation.pressure") latestPressure = item;
+      }
       drawTrack(history.events);
       historySession = selectedSession;
       historySequence = summary.lastSequence;
     }
+    showLatest(latest.event, summary);
     status("Connected to local backend · " + sessions.length + " session(s) available", "ok");
   } catch (error) {
     status(error.message || "Could not read telemetry.", "error");

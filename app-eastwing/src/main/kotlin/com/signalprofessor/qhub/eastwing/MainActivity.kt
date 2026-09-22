@@ -214,10 +214,12 @@ class MainActivity : ComponentActivity() {
 
     private fun render(state: MissionState) {
         lastState = state
-        val payload = state.latestEvent?.payload
-        val latitude = payload?.get("latitudeDegrees")?.jsonPrimitive?.doubleOrNull
-        val longitude = payload?.get("longitudeDegrees")?.jsonPrimitive?.doubleOrNull
-        val accuracy = payload?.get("horizontalAccuracyMeters")?.jsonPrimitive?.doubleOrNull
+        val gnssPayload = state.latestGnssEvent?.payload
+        val pressurePayload = state.latestPressureEvent?.payload
+        val latitude = gnssPayload?.get("latitudeDegrees")?.jsonPrimitive?.doubleOrNull
+        val longitude = gnssPayload?.get("longitudeDegrees")?.jsonPrimitive?.doubleOrNull
+        val accuracy = gnssPayload?.get("horizontalAccuracyMeters")?.jsonPrimitive?.doubleOrNull
+        val pressure = pressurePayload?.get("pressureHectopascals")?.jsonPrimitive?.doubleOrNull
         val position = if (latitude != null && longitude != null) {
             "%.6f, %.6f".format(Locale.US, latitude, longitude)
         } else "Waiting for GNSS"
@@ -231,6 +233,7 @@ class MainActivity : ComponentActivity() {
             appendLine("Log size: ${state.fileSizeBytes} bytes")
             appendLine("Position: $position")
             appendLine("Accuracy: ${accuracy?.let { "%.1f m".format(Locale.US, it) } ?: "-"}")
+            appendLine("Pressure: ${pressure?.let { "%.2f hPa".format(Locale.US, it) } ?: if (state.pressureAvailable == false) "sensor unavailable" else "waiting"}")
             state.verification?.let { appendLine("Verification: $it") }
             append("File: ${state.fileName ?: "-"}")
         }
