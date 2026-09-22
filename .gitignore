@@ -14,3 +14,7 @@ signing.properties
 captures/
 externalNativeBuild/
 .cxx/
+__pycache__/
+*.pyc
+*.sqlite3
+*.sqlite3-*

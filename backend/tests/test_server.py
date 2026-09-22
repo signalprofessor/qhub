@@ -1,0 +1,76 @@
+import http.client
+import json
+import tempfile
+import threading
+import unittest
+from http.server import ThreadingHTTPServer
+from pathlib import Path
+
+from backend.server import initialize, make_handler
+
+
+def event(sequence=0, event_id="event-0"):
+    return {
+        "schemaVersion": 1,
+        "eventId": event_id,
+        "deviceId": "device-1",
+        "sessionId": "session-1",
+        "sequence": sequence,
+        "source": "navigation",
+        "eventType": "navigation.gnss",
+        "timestamp": {"monotonicNanos": 1000 + sequence, "utcEpochMillis": 2000 + sequence},
+        "payload": {"latitudeDegrees": 58.0, "longitudeDegrees": 15.0},
+    }
+
+
+class BackendHttpTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db_path = str(Path(self.tmp.name) / "events.sqlite3")
+        initialize(self.db_path)
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.db_path, "test-token"))
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join()
+        self.tmp.cleanup()
+
+    def request(self, method, path, body=None, token="test-token"):
+        connection = http.client.HTTPConnection("127.0.0.1", self.httpd.server_port)
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/x-ndjson"}
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        result = response.status, json.loads(response.read())
+        connection.close()
+        return result
+
+    def test_health_and_auth(self):
+        self.assertEqual(self.request("GET", "/health")[0], 200)
+        self.assertEqual(self.request("GET", "/v1/sessions", token="wrong")[0], 401)
+
+    def test_ingest_retry_and_summary(self):
+        body = (json.dumps(event()) + "\n" + json.dumps(event(1, "event-1")) + "\n").encode()
+        self.assertEqual(self.request("POST", "/v1/events", body)[1],
+                         {"received": 2, "inserted": 2, "duplicates": 0})
+        self.assertEqual(self.request("POST", "/v1/events", body)[1],
+                         {"received": 2, "inserted": 0, "duplicates": 2})
+        status, result = self.request("GET", "/v1/sessions")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["sessions"][0]["eventCount"], 2)
+
+    def test_conflict_rolls_back_batch(self):
+        body = (json.dumps(event(1, "event-1")) + "\n" +
+                json.dumps(event(1, "different-id")) + "\n").encode()
+        self.assertEqual(self.request("POST", "/v1/events", body)[0], 409)
+        self.assertEqual(self.request("GET", "/v1/sessions")[1]["sessions"], [])
+
+    def test_invalid_batch_rejected(self):
+        self.assertEqual(self.request("POST", "/v1/events", b'{"bad":true}\n')[0], 400)
+        self.assertEqual(self.request("GET", "/v1/sessions")[1]["sessions"], [])
+
+
+if __name__ == "__main__":
+    unittest.main()
