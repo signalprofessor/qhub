@@ -79,6 +79,23 @@ class BackendHttpTest(unittest.TestCase):
         self.assertIn(b"/v1/latest", response.read())
         connection.close()
 
+    def test_vertical_filter_requires_auth_and_both_measurements(self):
+        gnss = event()
+        gnss["payload"] = {"altitudeMeters": 80.0, "verticalAccuracyMeters": 20.0}
+        pressure = event(1, "event-1")
+        pressure["eventType"] = "navigation.pressure"
+        pressure["timestamp"] = {"monotonicNanos": 2_000_000_000, "utcEpochMillis": 3000}
+        pressure["payload"] = {"pressureHectopascals": 1005.7}
+        body = (json.dumps(gnss) + "\n" + json.dumps(pressure) + "\n").encode()
+        self.assertEqual(self.request("POST", "/v1/events", body)[0], 200)
+        path = "/v1/session-vertical-filter?sessionId=session-1"
+        self.assertEqual(self.request("GET", path, token="wrong")[0], 401)
+        status, result = self.request("GET", path)
+        self.assertEqual(status, 200)
+        self.assertEqual(result["groundClearanceMeters"], 0.4)
+        self.assertGreaterEqual(len(result["estimates"]), 1)
+        self.assertEqual(result["parameters"]["gnssFallbackStdMeters"], 20.0)
+
     def test_session_terrain_requires_token_and_samples_inside_tile(self):
         import struct
         from backend.terrain import CACHE_NAME, SIZE

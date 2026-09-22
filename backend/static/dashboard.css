@@ -79,5 +79,6 @@ footer { margin-top: 22px; color: #7b8e90; font-size: 12px; }
 .height-legend span::before { content: ""; display: inline-block; width: 18px; border-top: 3px solid; vertical-align: middle; margin-right: 7px; }
 .height-gnss::before { border-color: #176d67; }
 .height-pressure::before { border-color: #df8f35; }
+.height-kf::before { border-color: #c43b4d; }
 .height-dem::before { border-color: #7a4c9b; }
 @media (max-width: 760px) { .height-panel { padding: 20px; } .height-chart { min-height: 180px; } }

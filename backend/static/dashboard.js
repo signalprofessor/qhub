@@ -90,7 +90,7 @@ function updateSessions(sessions) {
   if (selectedSession) ui.session.value = selectedSession;
 }
 
-function drawHeight(events, terrain = [], demAvailable = false) {
+function drawHeight(events, terrain = [], demAvailable = false, verticalFilter = null) {
   const gnss = events.filter(item => item.eventType === "navigation.gnss")
     .map(item => ({t: item.timestamp?.utcEpochMillis, h: item.payload?.altitudeMeters}))
     .filter(item => Number.isFinite(item.t) && Number.isFinite(item.h));
@@ -111,7 +111,11 @@ function drawHeight(events, terrain = [], demAvailable = false) {
   const baro = anchor && reference ? pressure.map(item => ({
     t: item.t, h: anchor.h + 8434.5 * Math.log(reference.p / item.p),
   })) : [];
-  const points = gnss.concat(baro, dem);
+  const clearance = verticalFilter?.groundClearanceMeters ?? 0.4;
+  const kf = (verticalFilter?.estimates || []).map(item => ({
+    t: item.utcEpochMillis, h: item.heightMeters - clearance, sequence: item.sequence,
+  })).filter(item => Number.isFinite(item.t) && Number.isFinite(item.h));
+  const points = gnss.concat(baro, dem, kf);
   const t0 = Math.min(...points.map(item => item.t));
   const t1 = Math.max(...points.map(item => item.t));
   const h0 = Math.min(...points.map(item => item.h));
@@ -140,6 +144,7 @@ function drawHeight(events, terrain = [], demAvailable = false) {
   }
   line(baro, "#df8f35");
   line(gnss, "#176d67");
+  line(kf, "#c43b4d");
   if (dem.length) {
     let penDown = false;
     const d = terrain.map(item => {
@@ -151,8 +156,18 @@ function drawHeight(events, terrain = [], demAvailable = false) {
     }).join(" ");
     ui.heightChart.append(svgElement("path", {d, fill: "none", stroke: "#7a4c9b", "stroke-width": 2.5}));
   }
-  ui.heightStatus.textContent = `${gnss.length} GNSS heights · ${baro.length} barometric estimates · ` +
-    (demAvailable ? `${dem.length} GNSS fixes inside DEM tile` : "DEM cache not prepared");
+  const kfBySequence = new Map(kf.map(item => [item.sequence, item.h]));
+  const differences = terrain.filter(item => Number.isFinite(item.terrainMeters) && kfBySequence.has(item.sequence))
+    .map(item => kfBySequence.get(item.sequence) - item.terrainMeters);
+  let comparison = "";
+  if (differences.length) {
+    const mean = differences.reduce((sum, value) => sum + value, 0) / differences.length;
+    const variance = differences.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+      Math.max(1, differences.length - 1);
+    comparison = ` · EKF ground − DEM: ${mean.toFixed(1)} ± ${Math.sqrt(variance).toFixed(1)} m`;
+  }
+  ui.heightStatus.textContent = `${gnss.length} GNSS heights · ${baro.length} pressure samples · ${kf.length} EKF estimates · ` +
+    (demAvailable ? `${dem.length} GNSS fixes inside DEM tile` : "DEM cache not prepared") + comparison;
 }
 
 function showLatest(event, summary) {
@@ -379,7 +394,13 @@ async function refresh() {
       } catch (error) {
         if (!String(error.message).includes("HTTP 404")) throw error;
       }
-      drawHeight(history.events, terrain?.heights || [], terrain !== null);
+      let verticalFilter = null;
+      try {
+        verticalFilter = await api("/v1/session-vertical-filter?sessionId=" + encodeURIComponent(selectedSession));
+      } catch (error) {
+        if (!String(error.message).includes("HTTP 422")) throw error;
+      }
+      drawHeight(history.events, terrain?.heights || [], terrain !== null, verticalFilter);
       historySession = selectedSession;
       historySequence = summary.lastSequence;
     }

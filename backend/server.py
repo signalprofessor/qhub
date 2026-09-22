@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from backend.terrain import CACHE_NAME, sampled_session
+from backend.vertical_filter import filter_session, parameters as vertical_filter_parameters
 
 MAX_BODY_BYTES = 1_000_000
 MAX_EVENTS = 1_000
@@ -233,6 +234,26 @@ def make_handler(db_path, token):
                     self.respond(404, {"error": "session not found"})
                 else:
                     self.respond(200, {"event": event})
+            elif path == "/v1/session-vertical-filter":
+                if not self.authorized():
+                    return
+                ids = parse_qs(request.query, keep_blank_values=True).get("sessionId", [])
+                if len(ids) != 1 or not ids[0] or len(ids[0]) > 200:
+                    self.respond(400, {"error": "one sessionId is required"})
+                    return
+                events = session_events(db_path, ids[0])
+                if events is None:
+                    self.respond(413, {"error": "session exceeds 20000 events; paging is not yet supported"})
+                elif not events:
+                    self.respond(404, {"error": "session not found"})
+                else:
+                    estimates = filter_session(events)
+                    if not estimates:
+                        self.respond(422, {"error": "session needs GNSS altitude and pressure"})
+                    else:
+                        self.respond(200, {"estimates": estimates,
+                                           "parameters": vertical_filter_parameters(),
+                                           "groundClearanceMeters": 0.4})
             elif path == "/v1/session-terrain":
                 if not self.authorized():
                     return

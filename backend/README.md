@@ -76,3 +76,10 @@ python3 -m backend.prepare_dem /path/to/6472500_535000.tif
 ```
 
 This verifies 2500 × 2500 float32 data, 1 m pixels, origin E 535000/N 6472500, and EPSG:3006, then writes `backend/data/6472500_535000.f32` (25 MB, Git-ignored). The running HTTP server uses only Python's standard library to memory-map that cache and bilinearly sample four pixels per fix. Restart the server after upgrading its code. The authenticated `GET /v1/session-terrain?sessionId=...` endpoint returns a height or `null` for each valid GNSS fix; it does not expose the raster itself. If the cache is absent, the dashboard keeps showing GNSS/barometric height and labels DEM as unavailable.
+
+
+## Experimental vertical EKF
+
+The authenticated `GET /v1/session-vertical-filter?sessionId=...` endpoint runs a causal offline EKF with state `[h, hdot, b]`: phone height in metres, vertical speed, and pressure bias in hPa. GNSS measures `h`; Android `verticalAccuracyMeters` supplies its standard deviation when available, with a 20 m fallback. Pressure uses the nonlinear standard-atmosphere model `1013.25 exp(-h/8434.5) + b`, linearized at each update. The initial experimental parameters are pressure noise 0.05 hPa, vertical-acceleration process noise 0.25 m/s², and pressure-bias random-walk standard deviation 10 hPa per square-root hour. These are hypotheses to tune, not calibrated sensor specifications.
+
+The dashboard plots `EKF phone height − 0.4 m` against DEM terrain height. DEM is never passed to the filter. It also reports the raw mean and sample standard deviation of `(EKF height − 0.4 m − DEM)` inside the tile. A constant non-zero value can indicate incompatible GNSS/DEM vertical datums; it is not automatically removed because doing so with the evaluation DEM would make the comparison circular. The fixed 0.4 m ground clearance is a temporary test value intended to be replaced by laser distance.
