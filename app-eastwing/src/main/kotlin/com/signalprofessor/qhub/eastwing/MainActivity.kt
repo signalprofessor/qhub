@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var replayButton: Button
     private lateinit var saveButton: Button
     private lateinit var uploadButton: Button
+    private lateinit var uploadStatusView: TextView
     private lateinit var liveButton: Button
     private lateinit var liveStatusView: TextView
     private lateinit var tokenInput: EditText
@@ -128,6 +129,11 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { uploadLastMission() }
         }
         content.addView(uploadButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        uploadStatusView = TextView(this).apply {
+            text = "Upload result: not sent yet"
+            textSize = 16f
+        }
+        content.addView(uploadStatusView, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         liveStatusView = TextView(this).apply { text = "Live OFF" }
         content.addView(liveStatusView, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         liveButton = Button(this).apply {
@@ -156,16 +162,16 @@ class MainActivity : ComponentActivity() {
 
     private fun uploadLastMission() {
         val file = runCatching { recorder.latestMissionForUpload() }.getOrElse {
-            render(lastState.copy(status = "Upload unavailable: ${it.message}"))
+            showUploadResult("Upload unavailable: ${it.message}")
             return
         }
         val token = tokenInput.text.toString().trim()
         if (token.isEmpty()) {
-            render(lastState.copy(status = "Enter the backend token first"))
+            showUploadResult("Enter the backend token first")
             return
         }
         uploading = true
-        render(lastState.copy(status = "Sending mission to local backend..."))
+        showUploadResult("Sending mission to local backend...")
         Thread {
             val result = runCatching { LocalTelemetryUploader.upload(file, token) }
             runOnUiThread {
@@ -175,9 +181,14 @@ class MainActivity : ComponentActivity() {
                     onSuccess = { "Backend receipt: $it" },
                     onFailure = { "Upload failed: ${it.message ?: "unknown error"}" },
                 )
-                render(lastState.copy(status = message))
+                showUploadResult(message)
             }
         }.start()
+    }
+
+    private fun showUploadResult(message: String) {
+        uploadStatusView.text = message
+        render(lastState.copy(status = message))
     }
 
     private fun toggleLiveTelemetry() {
