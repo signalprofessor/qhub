@@ -40,7 +40,7 @@ No source code from the Qulinda Qhub repository has been copied.
 5. Press **Replay last mission**. The replay count, final position, and file information should match the recording.
 6. Press **Save last mission log** and choose a location, such as Downloads, to export the raw NDJSON file for inspection. This is a local copy, not a backend upload.
 
-Mission logs are stored in the app-private `files/missions` directory.
+Mission logs are stored in the app-private `files/missions` directory. Starting a mission now starts a foreground location service with a persistent notification and a **Stop mission** action. A partial CPU wake lock is held only while recording (with a four-hour safety limit) to keep the non-wake-up pressure sensor active when the screen is off. Stop the mission when finished to conserve battery. The service is started from the visible app after location permission is granted; it does not require background-location permission. Live telemetry remains opt-in and foreground-only, so a completed log may still need a manual upload over USB.
 
 ## Build
 

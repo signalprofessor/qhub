@@ -1,7 +1,9 @@
 package com.signalprofessor.qhub.eastwing
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -15,14 +17,15 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import com.signalprofessor.qhub.navigation.GnssLocationSource
 import java.util.Locale
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonPrimitive
 
 class MainActivity : ComponentActivity() {
-    private lateinit var recorder: MissionRecorder
-    private lateinit var liveSender: LiveTelemetrySender
+    private val runtime by lazy { MissionRuntime.get(applicationContext) }
+    private val recorder get() = runtime.recorder
+    private val liveSender get() = runtime.liveSender
+    private var startingMission = false
     private var lastState = MissionState("Ready")
     private lateinit var statusView: TextView
     private lateinit var startButton: Button
@@ -52,15 +55,17 @@ class MainActivity : ComponentActivity() {
     private val permissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
-        if (granted) startMission() else render(MissionState("Location permission denied"))
+        if (granted) requestNotificationAndStart() else render(MissionState("Location permission denied"))
     }
+
+    private val notificationPermissionRequest = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { startMission() } // The mission can run even if notification permission is denied.
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        liveSender = LiveTelemetrySender(::showLiveStatus)
-        recorder = MissionRecorder(this, ::render, liveSender::enqueue)
         setContentView(buildContent())
-        render(MissionState("Ready"))
+        runtime.attach(this, ::onMissionState, ::showLiveStatus)
     }
 
     override fun onStop() {
@@ -69,8 +74,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        liveSender.disable()
-        recorder.close()
+        runtime.detach(this)
         super.onDestroy()
     }
 
@@ -99,7 +103,10 @@ class MainActivity : ComponentActivity() {
         }
         stopButton = Button(this).apply {
             text = "Stop mission"
-            setOnClickListener { recorder.stop() }
+            setOnClickListener {
+                startService(Intent(this@MainActivity, MissionRecordingService::class.java)
+                    .setAction(MissionRecordingService.ACTION_STOP))
+            }
         }
         replayButton = Button(this).apply {
             text = "Replay last mission"
@@ -148,16 +155,31 @@ class MainActivity : ComponentActivity() {
         if (
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
-        ) startMission() else permissionRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        ) requestNotificationAndStart() else permissionRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    private fun requestNotificationAndStart() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) notificationPermissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+        else startMission()
     }
 
     private fun startMission() {
-        when (recorder.start()) {
-            GnssLocationSource.StartResult.Started -> Unit
-            GnssLocationSource.StartResult.GpsDisabled -> render(MissionState("Enable GPS and try again"))
-            GnssLocationSource.StartResult.PermissionMissing -> render(MissionState("Location permission missing"))
-            GnssLocationSource.StartResult.AlreadyRunning -> render(MissionState("Mission or replay already running"))
+        startingMission = true
+        render(lastState.copy(status = "Starting foreground recording…"))
+        val intent = Intent(this, MissionRecordingService::class.java)
+            .setAction(MissionRecordingService.ACTION_START)
+        runCatching { ContextCompat.startForegroundService(this, intent) }.onFailure {
+            startingMission = false
+            render(MissionState("Could not start recording: ${it.message ?: "unknown error"}"))
         }
+    }
+
+    private fun onMissionState(state: MissionState) {
+        startingMission = false
+        render(state)
     }
 
     private fun uploadLastMission() {
@@ -237,7 +259,7 @@ class MainActivity : ComponentActivity() {
             state.verification?.let { appendLine("Verification: $it") }
             append("File: ${state.fileName ?: "-"}")
         }
-        startButton.isEnabled = !state.isRecording && !state.isReplaying && !uploading
+        startButton.isEnabled = !state.isRecording && !state.isReplaying && !uploading && !startingMission
         stopButton.isEnabled = state.isRecording
         replayButton.isEnabled = !state.isRecording && !uploading
         replayButton.text = if (state.isReplaying) "Cancel replay" else "Replay last mission"
