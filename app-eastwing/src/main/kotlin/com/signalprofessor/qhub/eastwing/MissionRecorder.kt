@@ -1,6 +1,8 @@
 package com.signalprofessor.qhub.eastwing
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.signalprofessor.qhub.core.capability.CapabilityId
 import com.signalprofessor.qhub.core.event.EventEnvelope
 import com.signalprofessor.qhub.core.event.EventFactory
@@ -22,34 +24,36 @@ class MissionRecorder(
     private val onState: (MissionState) -> Unit,
 ) {
     private val appContext = context.applicationContext
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val missionsDirectory = File(appContext.filesDir, "missions")
-    private val deviceId: String = appContext.getSharedPreferences("qhub_identity", Context.MODE_PRIVATE)
-        .let { preferences ->
-            preferences.getString("device_id", null) ?: UUID.randomUUID().toString().also {
-                preferences.edit().putString("device_id", it).apply()
-            }
-        }
+    private val identityPreferences = appContext.getSharedPreferences("qhub_identity", Context.MODE_PRIVATE)
+    private val summaryPreferences = appContext.getSharedPreferences("qhub_mission_summaries", Context.MODE_PRIVATE)
+    private val deviceId: String = identityPreferences.getString("device_id", null)
+        ?: UUID.randomUUID().toString().also { identityPreferences.edit().putString("device_id", it).apply() }
 
     private var locationSource: GnssLocationSource? = null
     private var writer: NdjsonEventWriter? = null
     private var factory: EventFactory? = null
     private var eventCount = 0L
+    private var lastRecordedEvent: EventEnvelope? = null
     private var startedAtUtcMillis = 0L
     private var currentFile: File? = null
+    private var activeReplay: EventReplay? = null
+    private var replayStep: Runnable? = null
 
     fun start(): GnssLocationSource.StartResult {
-        if (writer != null) return GnssLocationSource.StartResult.AlreadyRunning
+        if (writer != null || activeReplay != null) return GnssLocationSource.StartResult.AlreadyRunning
         val sessionId = UUID.randomUUID().toString()
         val name = "mission_${fileTimestamp.format(Date())}_$sessionId.ndjson"
         val file = File(missionsDirectory, name)
         val pendingWriter = NdjsonEventWriter(file)
-        val pendingFactory = EventFactory(deviceId, sessionId, AndroidQhubClock)
         val pendingSource = GnssLocationSource(appContext, ::recordSample)
 
         writer = pendingWriter
-        factory = pendingFactory
+        factory = EventFactory(deviceId, sessionId, AndroidQhubClock)
         locationSource = pendingSource
         eventCount = 0
+        lastRecordedEvent = null
         startedAtUtcMillis = System.currentTimeMillis()
         currentFile = file
 
@@ -60,48 +64,107 @@ class MissionRecorder(
             clearActiveSession()
             return result
         }
-        publishState("Recording GNSS", null)
+        publishRecordingState(null)
         return result
     }
 
     fun stop() {
         locationSource?.stop()
         writer?.close()
-        val lastEventCount = eventCount
-        val lastFile = currentFile
-        clearActiveSession()
-        onState(
-            MissionState(
-                status = "Mission stopped",
-                eventCount = lastEventCount,
-                fileSizeBytes = lastFile?.length() ?: 0,
-                fileName = lastFile?.name,
-            ),
+        val completedFile = currentFile
+        if (completedFile != null) {
+            summaryPreferences.edit()
+                .putLong("${completedFile.name}.count", eventCount)
+                .putString("${completedFile.name}.lastEventId", lastRecordedEvent?.eventId.orEmpty())
+                .apply()
+        }
+        val finalState = MissionState(
+            status = "Mission stopped",
+            eventCount = eventCount,
+            fileSizeBytes = completedFile?.length() ?: 0,
+            fileName = completedFile?.name,
+            latestEvent = lastRecordedEvent,
         )
+        clearActiveSession()
+        onState(finalState)
     }
 
     fun replayLast() {
+        if (writer != null || activeReplay != null) return
         val file = latestMissionFile()
         if (file == null) {
             onState(MissionState(status = "No recorded mission found"))
             return
         }
-        val events = NdjsonEventReader.read(file)
-        var latest: EventEnvelope? = null
-        EventReplay(events).replay { latest = it }
-        onState(
-            MissionState(
-                status = "Replay complete",
-                eventCount = events.size.toLong(),
-                fileSizeBytes = file.length(),
-                fileName = file.name,
-                latestEvent = latest,
-            ),
-        )
+        val events = runCatching { NdjsonEventReader.read(file) }.getOrElse { error ->
+            onState(MissionState(status = "Replay failed: ${error.message ?: "invalid log"}"))
+            return
+        }
+        if (events.isEmpty()) {
+            onState(MissionState(status = "This mission has no GNSS events", fileName = file.name))
+            return
+        }
+        val replay = EventReplay(events)
+        activeReplay = replay
+
+        fun scheduleNext() {
+            val step = Runnable {
+                if (activeReplay !== replay) return@Runnable
+                val event = replay.next() ?: return@Runnable
+                val complete = replay.position == replay.size
+                val verification = if (complete) verifyReplay(file, replay.position.toLong(), event) else null
+                onState(
+                    MissionState(
+                        status = if (complete) "Replay complete" else "Replaying at recorded speed",
+                        eventCount = replay.position.toLong(),
+                        fileSizeBytes = file.length(),
+                        elapsedMillis = (event.timestamp.monotonicNanos - events.first().timestamp.monotonicNanos)
+                            .coerceAtLeast(0) / 1_000_000,
+                        fileName = file.name,
+                        latestEvent = event,
+                        replayTotal = replay.size,
+                        verification = verification,
+                        isReplaying = !complete,
+                    ),
+                )
+                if (complete) {
+                    activeReplay = null
+                    replayStep = null
+                } else {
+                    scheduleNext()
+                }
+            }
+            replayStep = step
+            mainHandler.postDelayed(step, replay.delayUntilNextMillis())
+        }
+
+        onState(MissionState(status = "Starting replay", fileName = file.name, replayTotal = replay.size, isReplaying = true))
+        scheduleNext()
+    }
+
+    fun cancelReplay() {
+        replayStep?.let(mainHandler::removeCallbacks)
+        replayStep = null
+        activeReplay = null
+        onState(MissionState(status = "Replay cancelled"))
     }
 
     fun close() {
+        replayStep?.let(mainHandler::removeCallbacks)
+        replayStep = null
+        activeReplay = null
         if (writer != null) stop()
+    }
+
+    private fun verifyReplay(file: File, replayedCount: Long, finalEvent: EventEnvelope): String {
+        val expectedCount = summaryPreferences.getLong("${file.name}.count", -1)
+        val expectedLastId = summaryPreferences.getString("${file.name}.lastEventId", null)
+        if (expectedCount < 0 || expectedLastId == null) return "No stop-time summary for this older recording"
+        return if (expectedCount == replayedCount && expectedLastId == finalEvent.eventId) {
+            "MATCH: count and final event agree with recording"
+        } else {
+            "MISMATCH: replay differs from recording summary"
+        }
     }
 
     private fun recordSample(sample: GnssSample) {
@@ -112,18 +175,20 @@ class MissionRecorder(
         ) ?: return
         writer?.append(event)
         eventCount += 1
-        publishState("Recording GNSS", event)
+        lastRecordedEvent = event
+        publishRecordingState(event)
     }
 
-    private fun publishState(status: String, event: EventEnvelope?) {
+    private fun publishRecordingState(event: EventEnvelope?) {
         onState(
             MissionState(
-                status = status,
+                status = "Recording GNSS",
                 eventCount = eventCount,
-                fileSizeBytes = writer?.sizeBytes() ?: currentFile?.length() ?: 0,
+                fileSizeBytes = writer?.sizeBytes() ?: 0,
                 elapsedMillis = (System.currentTimeMillis() - startedAtUtcMillis).coerceAtLeast(0),
                 fileName = currentFile?.name,
                 latestEvent = event,
+                isRecording = true,
             ),
         )
     }
@@ -153,4 +218,8 @@ data class MissionState(
     val elapsedMillis: Long = 0,
     val fileName: String? = null,
     val latestEvent: EventEnvelope? = null,
+    val replayTotal: Int = 0,
+    val verification: String? = null,
+    val isRecording: Boolean = false,
+    val isReplaying: Boolean = false,
 )

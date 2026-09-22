@@ -1,6 +1,7 @@
 package com.signalprofessor.qhub.eastwing
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -12,7 +13,6 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import android.content.pm.PackageManager
 import com.signalprofessor.qhub.navigation.GnssLocationSource
 import java.util.Locale
 import kotlinx.serialization.json.doubleOrNull
@@ -23,6 +23,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var statusView: TextView
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
+    private lateinit var replayButton: Button
 
     private val permissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -49,7 +50,6 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(padding, padding, padding, padding)
         }
-
         content.addView(TextView(this).apply {
             text = "EastWing Qhub"
             textSize = 26f
@@ -68,17 +68,17 @@ class MainActivity : ComponentActivity() {
         }
         stopButton = Button(this).apply {
             text = "Stop mission"
-            isEnabled = false
             setOnClickListener { recorder.stop() }
         }
-        val replayButton = Button(this).apply {
+        replayButton = Button(this).apply {
             text = "Replay last mission"
-            setOnClickListener { recorder.replayLast() }
+            setOnClickListener {
+                if (text == "Cancel replay") recorder.cancelReplay() else recorder.replayLast()
+            }
         }
         content.addView(startButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         content.addView(stopButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         content.addView(replayButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
         return ScrollView(this).apply { addView(content) }
     }
 
@@ -86,22 +86,15 @@ class MainActivity : ComponentActivity() {
         if (
             ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
-        ) {
-            startMission()
-        } else {
-            permissionRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
+        ) startMission() else permissionRequest.launch(Manifest.permission.ACCESS_FINE_LOCATION)
     }
 
     private fun startMission() {
         when (recorder.start()) {
-            GnssLocationSource.StartResult.Started -> {
-                startButton.isEnabled = false
-                stopButton.isEnabled = true
-            }
+            GnssLocationSource.StartResult.Started -> Unit
             GnssLocationSource.StartResult.GpsDisabled -> render(MissionState("Enable GPS and try again"))
             GnssLocationSource.StartResult.PermissionMissing -> render(MissionState("Location permission missing"))
-            GnssLocationSource.StartResult.AlreadyRunning -> render(MissionState("Mission already running"))
+            GnssLocationSource.StartResult.AlreadyRunning -> render(MissionState("Mission or replay already running"))
         }
     }
 
@@ -112,21 +105,23 @@ class MainActivity : ComponentActivity() {
         val accuracy = payload?.get("horizontalAccuracyMeters")?.jsonPrimitive?.doubleOrNull
         val position = if (latitude != null && longitude != null) {
             "%.6f, %.6f".format(Locale.US, latitude, longitude)
-        } else {
-            "Waiting for GNSS"
-        }
+        } else "Waiting for GNSS"
+
         statusView.text = buildString {
             appendLine(state.status)
             appendLine()
-            appendLine("Events: ${state.eventCount}")
+            if (state.replayTotal > 0) appendLine("Replay progress: ${state.eventCount} / ${state.replayTotal}")
+            else appendLine("Events: ${state.eventCount}")
             appendLine("Duration: ${state.elapsedMillis / 1000} s")
             appendLine("Log size: ${state.fileSizeBytes} bytes")
             appendLine("Position: $position")
             appendLine("Accuracy: ${accuracy?.let { "%.1f m".format(Locale.US, it) } ?: "-"}")
+            state.verification?.let { appendLine("Verification: $it") }
             append("File: ${state.fileName ?: "-"}")
         }
-        val recording = state.status == "Recording GNSS"
-        startButton.isEnabled = !recording
-        stopButton.isEnabled = recording
+        startButton.isEnabled = !state.isRecording && !state.isReplaying
+        stopButton.isEnabled = state.isRecording
+        replayButton.isEnabled = !state.isRecording
+        replayButton.text = if (state.isReplaying) "Cancel replay" else "Replay last mission"
     }
 }

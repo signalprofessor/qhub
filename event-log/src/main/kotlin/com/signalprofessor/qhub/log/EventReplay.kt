@@ -16,6 +16,14 @@ class EventReplay(
 
     fun next(): EventEnvelope? = events.getOrNull(index)?.also { index += 1 }
 
+    /** Delay until the next recorded event, based on monotonic sensor timing. */
+    fun delayUntilNextMillis(): Long {
+        val previous = events.getOrNull(index - 1) ?: return 0
+        val upcoming = events.getOrNull(index) ?: return 0
+        return ((upcoming.timestamp.monotonicNanos - previous.timestamp.monotonicNanos)
+            .coerceAtLeast(0) / 1_000_000)
+    }
+
     fun replay(consumer: (EventEnvelope) -> Unit) {
         while (true) consumer(next() ?: return)
     }
