@@ -19,6 +19,12 @@ const ui = {
   mapFixes: document.getElementById("map-fixes"),
   mapInside: document.getElementById("map-inside"),
   mapScale: document.getElementById("map-scale"),
+  mapToggle: document.getElementById("map-toggle"),
+  topoToggle: document.getElementById("topo-toggle"),
+  zoomIn: document.getElementById("zoom-in"),
+  zoomOut: document.getElementById("zoom-out"),
+  fitMap: document.getElementById("fit-map"),
+  attribution: document.getElementById("map-attribution"),
 };
 let token = "";
 let selectedSession = "";
@@ -26,6 +32,13 @@ let polling = false;
 let timer = null;
 let historySession = "";
 let historySequence = -1;
+const demTile = {west: 535000, east: 537500, south: 6470000, north: 6472500};
+let fixesOnMap = [];
+let view = {east: 536250, north: 6471250, metresPerPixel: 6.3};
+let mapEnabled = false;
+let topographyEnabled = false;
+let topographyUrl = "";
+let dragStart = null;
 
 function status(message, kind = "") {
   ui.status.textContent = message;
@@ -120,53 +133,149 @@ function svgElement(name, attributes) {
   return element;
 }
 
-function drawTrack(events) {
-  const tile = {west: 535000, east: 537500, south: 6470000, north: 6472500};
-  const fixes = events.filter(item => item.eventType === "navigation.gnss")
-    .map(item => ({...item.payload, sequence: item.sequence}))
-    .filter(item => Number.isFinite(item.latitudeDegrees) && Number.isFinite(item.longitudeDegrees)
-      && Math.abs(item.latitudeDegrees) <= 90 && Math.abs(item.longitudeDegrees) <= 180)
-    .map(item => ({...sweref99(item.latitudeDegrees, item.longitudeDegrees), sequence: item.sequence}));
-  const inside = fixes.filter(p => p.east >= tile.west && p.east <= tile.east
-    && p.north >= tile.south && p.north <= tile.north).length;
-  const eastings = [tile.west, tile.east, ...fixes.map(p => p.east)];
-  const northings = [tile.south, tile.north, ...fixes.map(p => p.north)];
-  const minE = Math.min(...eastings), maxE = Math.max(...eastings);
-  const minN = Math.min(...northings), maxN = Math.max(...northings);
-  const width = 900, height = 500, pad = 40;
-  const metresPerPixel = Math.max((maxE - minE) / (width - 2 * pad),
-    (maxN - minN) / (height - 2 * pad)) * 1.12;
-  const centerE = (minE + maxE) / 2, centerN = (minN + maxN) / 2;
-  const x = e => width / 2 + (e - centerE) / metresPerPixel;
-  const y = n => height / 2 - (n - centerN) / metresPerPixel;
+// Inverse of the same WGS84 transverse Mercator projection, for selecting map tiles.
+function wgs84(east, north) {
+  const a = 6378137, f = 1 / 298.257223563, k = 0.9996;
+  const e2 = f * (2 - f), ep2 = e2 / (1 - e2);
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const mu = north / (k * a * (1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256));
+  const phi1 = mu + (3 * e1 / 2 - 27 * e1 ** 3 / 32) * Math.sin(2 * mu)
+    + (21 * e1 ** 2 / 16 - 55 * e1 ** 4 / 32) * Math.sin(4 * mu)
+    + 151 * e1 ** 3 / 96 * Math.sin(6 * mu) + 1097 * e1 ** 4 / 512 * Math.sin(8 * mu);
+  const sin = Math.sin(phi1), cos = Math.cos(phi1), tan = Math.tan(phi1);
+  const C = ep2 * cos * cos, T = tan * tan;
+  const N = a / Math.sqrt(1 - e2 * sin * sin);
+  const R = a * (1 - e2) / (1 - e2 * sin * sin) ** 1.5;
+  const D = (east - 500000) / (N * k);
+  const latitude = phi1 - (N * tan / R) * (D ** 2 / 2
+    - (5 + 3 * T + 10 * C - 4 * C * C - 9 * ep2) * D ** 4 / 24
+    + (61 + 90 * T + 298 * C + 45 * T * T - 252 * ep2 - 3 * C * C) * D ** 6 / 720);
+  const longitude = 15 * Math.PI / 180 + (D - (1 + 2 * T + C) * D ** 3 / 6
+    + (5 - 2 * C + 28 * T - 3 * C * C + 8 * ep2 + 24 * T * T) * D ** 5 / 120) / cos;
+  return {latitude: latitude * 180 / Math.PI, longitude: longitude * 180 / Math.PI};
+}
+
+function tileNumber(latitude, longitude, zoom) {
+  const n = 2 ** zoom;
+  const lat = Math.max(-85.0511, Math.min(85.0511, latitude)) * Math.PI / 180;
+  return {x: (longitude + 180) / 360 * n,
+    y: (1 - Math.asinh(Math.tan(lat)) / Math.PI) / 2 * n};
+}
+
+function tileCorner(x, y, zoom) {
+  const n = 2 ** zoom;
+  return {latitude: Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI,
+    longitude: x / n * 360 - 180};
+}
+
+function fitDem() {
+  view = {east: (demTile.west + demTile.east) / 2,
+    north: (demTile.south + demTile.north) / 2, metresPerPixel: 6.3};
+  renderMap();
+}
+
+function addMapTiles(x, y) {
+  const center = wgs84(view.east, view.north);
+  const idealZoom = Math.log2(156543.03392 * Math.cos(center.latitude * Math.PI / 180)
+    / view.metresPerPixel);
+  const zoom = Math.max(0, Math.min(17, Math.round(idealZoom)));
+  const corners = [[0, 0], [900, 0], [0, 500], [900, 500]].map(([sx, sy]) =>
+    wgs84(view.east + (sx - 450) * view.metresPerPixel,
+      view.north - (sy - 250) * view.metresPerPixel));
+  const tiles = corners.map(p => tileNumber(p.latitude, p.longitude, zoom));
+  const left = Math.max(0, Math.floor(Math.min(...tiles.map(p => p.x))) - 1);
+  const right = Math.min(2 ** zoom - 1, Math.floor(Math.max(...tiles.map(p => p.x))) + 1);
+  const top = Math.max(0, Math.floor(Math.min(...tiles.map(p => p.y))) - 1);
+  const bottom = Math.min(2 ** zoom - 1, Math.floor(Math.max(...tiles.map(p => p.y))) + 1);
+  if ((right - left + 1) * (bottom - top + 1) > 64) {
+    ui.mapStatus.textContent = "Map area too wide; zoom in to load background images.";
+    return;
+  }
+  const group = svgElement("g", {"aria-label": "OpenStreetMap background"});
+  for (let ty = top; ty <= bottom; ty++) for (let tx = left; tx <= right; tx++) {
+    const nw = tileCorner(tx, ty, zoom), ne = tileCorner(tx + 1, ty, zoom);
+    const sw = tileCorner(tx, ty + 1, zoom);
+    const p0 = sweref99(nw.latitude, nw.longitude);
+    const p1 = sweref99(ne.latitude, ne.longitude);
+    const p2 = sweref99(sw.latitude, sw.longitude);
+    const x0 = x(p0.east), y0 = y(p0.north);
+    const a = (x(p1.east) - x0) / 256, b = (y(p1.north) - y0) / 256;
+    const c = (x(p2.east) - x0) / 256, d = (y(p2.north) - y0) / 256;
+    group.append(svgElement("image", {href: `https://tile.openstreetmap.org/${zoom}/${tx}/${ty}.png`,
+      width: 256, height: 256, transform: `matrix(${a} ${b} ${c} ${d} ${x0} ${y0})`}));
+  }
+  ui.map.append(group);
+}
+
+function renderMap() {
+  const width = 900, height = 500;
+  const x = e => width / 2 + (e - view.east) / view.metresPerPixel;
+  const y = n => height / 2 - (n - view.north) / view.metresPerPixel;
   ui.map.replaceChildren();
-  const grid = svgElement("g", {stroke: "#e4eded", "stroke-width": 1});
+  if (mapEnabled) addMapTiles(x, y);
+  if (topographyEnabled && topographyUrl) {
+    ui.map.append(svgElement("image", {href: topographyUrl, x: x(demTile.west), y: y(demTile.north),
+      width: 2500 / view.metresPerPixel, height: 2500 / view.metresPerPixel,
+      preserveAspectRatio: "none", opacity: mapEnabled ? 0.75 : 1}));
+  }
+  const grid = svgElement("g", {stroke: "#66848a", "stroke-opacity": mapEnabled ? 0.22 : 0.14});
   for (let i = 1; i < 5; i++) {
     grid.append(svgElement("line", {x1: i * width / 5, y1: 0, x2: i * width / 5, y2: height}));
     grid.append(svgElement("line", {x1: 0, y1: i * height / 5, x2: width, y2: i * height / 5}));
   }
   ui.map.append(grid);
-  ui.map.append(svgElement("rect", {x: x(tile.west), y: y(tile.north),
-    width: 2500 / metresPerPixel, height: 2500 / metresPerPixel,
-    fill: "#b8dfc4", "fill-opacity": 0.55, stroke: "#28845a", "stroke-width": 2}));
-  if (fixes.length) {
-    ui.map.append(svgElement("polyline", {points: fixes.map(p => `${x(p.east)},${y(p.north)}`).join(" "),
-      fill: "none", stroke: "#1669a6", "stroke-width": 3, "stroke-linejoin": "round"}));
-    for (const [index, color] of [[0, "#165d91"], [fixes.length - 1, "#e17036"]]) {
-      const point = fixes[index];
-      ui.map.append(svgElement("circle", {cx: x(point.east), cy: y(point.north), r: 6,
+  ui.map.append(svgElement("rect", {x: x(demTile.west), y: y(demTile.north),
+    width: 2500 / view.metresPerPixel, height: 2500 / view.metresPerPixel,
+    fill: mapEnabled || topographyEnabled ? "none" : "#b8dfc4", "fill-opacity": 0.55,
+    stroke: "#16834a", "stroke-width": 3}));
+  if (fixesOnMap.length) {
+    ui.map.append(svgElement("polyline", {points: fixesOnMap.map(p => `${x(p.east)},${y(p.north)}`).join(" "),
+      fill: "none", stroke: "#1669a6", "stroke-width": 4, "stroke-linejoin": "round"}));
+    for (const [index, color] of [[0, "#165d91"], [fixesOnMap.length - 1, "#e17036"]]) {
+      const point = fixesOnMap[index];
+      ui.map.append(svgElement("circle", {cx: x(point.east), cy: y(point.north), r: 7,
         fill: color, stroke: "white", "stroke-width": 2}));
     }
   }
-  const tileLabel = svgElement("text", {x: x(tile.west) + 8, y: y(tile.north) + 22,
-    fill: "#185b3d", "font-size": 14, "font-weight": 700});
-  tileLabel.textContent = "DEM 6472500_535000";
-  ui.map.append(tileLabel);
-  ui.mapStatus.textContent = fixes.length ? "Track and DEM tile in metres · north is up"
-    : "No valid GNSS positions in this session.";
-  ui.mapFixes.textContent = fixes.length + " GNSS fixes";
+  const label = svgElement("text", {x: x(demTile.west) + 8, y: y(demTile.north) + 22,
+    fill: "#064a2b", "font-size": 15, "font-weight": 800,
+    stroke: "white", "stroke-width": 3, "paint-order": "stroke"});
+  label.textContent = "DEM 6472500_535000";
+  ui.map.append(label);
+  ui.mapScale.textContent = "Map width ≈ " + Math.round(width * view.metresPerPixel / 100) / 10 + " km";
+}
+
+function drawTrack(events) {
+  fixesOnMap = events.filter(item => item.eventType === "navigation.gnss")
+    .map(item => item.payload || {})
+    .filter(item => Number.isFinite(item.latitudeDegrees) && Number.isFinite(item.longitudeDegrees)
+      && Math.abs(item.latitudeDegrees) <= 90 && Math.abs(item.longitudeDegrees) <= 180)
+    .map(item => sweref99(item.latitudeDegrees, item.longitudeDegrees));
+  const inside = fixesOnMap.filter(p => p.east >= demTile.west && p.east <= demTile.east
+    && p.north >= demTile.south && p.north <= demTile.north).length;
+  ui.mapStatus.textContent = fixesOnMap.length ? "Drag to explore · green outline is the DEM tile"
+    : "No valid GNSS positions in this session; DEM tile remains visible.";
+  ui.mapFixes.textContent = fixesOnMap.length + " GNSS fixes";
   ui.mapInside.textContent = inside + " inside DEM tile";
-  ui.mapScale.textContent = "Map width ≈ " + Math.round(width * metresPerPixel / 100) / 10 + " km";
+  renderMap();
+}
+
+async function loadTopography() {
+  if (topographyUrl) return true;
+  if (!token) {
+    ui.mapStatus.textContent = "Connect with the backend token before loading local topography.";
+    return false;
+  }
+  const response = await fetch("/topography.png", {
+    headers: {Authorization: "Bearer " + token}, cache: "no-store",
+  });
+  if (!response.ok) {
+    ui.mapStatus.textContent = response.status === 404
+      ? "Local topography has not been generated yet." : "Could not load local topography.";
+    return false;
+  }
+  topographyUrl = URL.createObjectURL(await response.blob());
+  return true;
 }
 
 async function refresh() {
@@ -222,3 +331,42 @@ ui.session.addEventListener("change", () => {
   selectedSession = ui.session.value;
   refresh();
 });
+
+ui.mapToggle.addEventListener("click", () => {
+  mapEnabled = !mapEnabled;
+  ui.mapToggle.setAttribute("aria-pressed", String(mapEnabled));
+  ui.mapToggle.textContent = mapEnabled ? "Map on" : "Map off";
+  ui.attribution.hidden = !mapEnabled;
+  renderMap();
+});
+ui.topoToggle.addEventListener("click", async () => {
+  if (!topographyEnabled && !(await loadTopography())) return;
+  topographyEnabled = !topographyEnabled;
+  ui.topoToggle.setAttribute("aria-pressed", String(topographyEnabled));
+  ui.topoToggle.textContent = topographyEnabled ? "Topography on" : "Topography off";
+  renderMap();
+});
+ui.zoomIn.addEventListener("click", () => { view.metresPerPixel /= 2; renderMap(); });
+ui.zoomOut.addEventListener("click", () => { view.metresPerPixel *= 2; renderMap(); });
+ui.fitMap.addEventListener("click", fitDem);
+ui.map.addEventListener("pointerdown", event => {
+  if (event.button !== 0) return;
+  dragStart = {x: event.clientX, y: event.clientY, east: view.east, north: view.north};
+  ui.map.setPointerCapture(event.pointerId);
+  ui.map.classList.add("dragging");
+});
+ui.map.addEventListener("pointermove", event => {
+  if (!dragStart) return;
+  const bounds = ui.map.getBoundingClientRect();
+  view.east = dragStart.east - (event.clientX - dragStart.x) * 900 / bounds.width * view.metresPerPixel;
+  view.north = dragStart.north + (event.clientY - dragStart.y) * 500 / bounds.height * view.metresPerPixel;
+});
+function endDrag() {
+  if (!dragStart) return;
+  dragStart = null;
+  ui.map.classList.remove("dragging");
+  renderMap();
+}
+ui.map.addEventListener("pointerup", endDrag);
+ui.map.addEventListener("pointercancel", endDrag);
+renderMap();

@@ -63,19 +63,26 @@
           <p class="eyebrow">TERRAIN / SWEREF 99 TM</p>
           <h2 id="map-title">Trajectory and DEM tile</h2>
         </div>
-        <span class="map-legend">Blue: GNSS track · Green: 2.5 km DEM tile</span>
+        <div class="map-controls" aria-label="Map layers and navigation">
+          <button id="map-toggle" class="layer-button" type="button" aria-pressed="false">Map off</button>
+          <button id="topo-toggle" class="layer-button" type="button" aria-pressed="false">Topography off</button>
+          <button id="zoom-in" class="map-button" type="button" aria-label="Zoom in">+</button>
+          <button id="zoom-out" class="map-button" type="button" aria-label="Zoom out">−</button>
+          <button id="fit-map" class="map-button" type="button">Fit</button>
+        </div>
       </div>
-      <p id="map-status" class="freshness">Connect to load the trajectory.</p>
+      <p id="map-status" class="freshness">Connect to load the trajectory. Drag and release to move the map.</p>
       <svg id="track-map" class="track-map" viewBox="0 0 900 500" role="img" aria-label="GNSS trajectory and DEM tile in SWEREF 99 TM"></svg>
       <div class="map-details">
         <span id="map-fixes">—</span>
         <span id="map-inside">—</span>
         <span id="map-scale">—</span>
       </div>
-      <p class="map-note">The green square is the footprint of 6472500_535000.tif (EPSG:3006; E 535000–537500, N 6470000–6472500). Terrain shading is a later layer; this view makes no external map requests.</p>
+      <p class="map-note">The green outline is the footprint of 6472500_535000.tif (EPSG:3006; E 535000–537500, N 6470000–6472500). Topography comes from that local DEM. Turning Map on loads OpenStreetMap images for the viewed area from a third party; no token or event data is sent with those image requests.</p>
+      <p id="map-attribution" class="map-attribution" hidden>Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a></p>
     </section>
 
-    <footer>Local development view · Not published at eastwing.signalprofessor.com · No map tiles or third-party services</footer>
+    <footer>Local development view · Not published at eastwing.signalprofessor.com · External map images load only when Map is enabled</footer>
   </main>
 </body>
 </html>

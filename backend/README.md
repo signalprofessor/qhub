@@ -43,10 +43,20 @@ Live sending is best-effort and works only while the app is in the foreground. I
 
 While the local backend is running, open `http://127.0.0.1:8001/dashboard` on the Mac (or use the port chosen for `backend.dev_server`). Enter the current token shown by the server. The page lists stored sessions and refreshes the selected session once per second, showing the latest position, speed, heading if available, horizontal accuracy, altitude, measurement time, and event count. An old session is labelled as having no recent event; the page does not imply that a mission is still running.
 
-This page is read-only. It uses no external map tiles, scripts, or analytics. The token is kept only in page memory and is cleared on reload. The API endpoints `GET /v1/sessions` and `GET /v1/latest?sessionId=...` require the token; loading the page itself exposes no mission data.
+This page is read-only. Its trajectory and DEM outline use EPSG:3006 coordinates. Use **Map on** to load OpenStreetMap background images for orientation, **Topography on** to overlay locally generated hillshading from `6472500_535000.tif`, and **Fit** to return to the 2.5 km DEM square. Drag to pan; use + and − to zoom. Map and Topography can be used separately or together. Only enabling Map contacts the OpenStreetMap tile service: the viewed tile area and browser network address become visible to that service, but no backend token or event JSON is sent. Map images are a temporary local-development choice, not a committed public-hosting dependency. Keep the map attribution visible and follow the [OSM tile policy](https://operations.osmfoundation.org/policies/tiles/).
+
+Generate the terrain overlay once, from the repository root, with Python plus Pillow and NumPy:
+
+```sh
+python3 -m backend.generate_topography /path/to/6472500_535000.tif
+```
+
+This writes `backend/data/hillshade.png` beside the local SQLite database. The PNG and original DEM are not committed. The backend itself still requires only Python's standard library. The topography image is available only after a valid backend token is provided. The DEM's GeoTIFF tags specify EPSG:3006, a 1 m pixel size, and upper-left E 535000/N 6472500; the 2500 × 2500 pixel footprint is E 535000–537500 and N 6470000–6472500. The hillshade is a visual derivative, not an elevation source for Ternav.
+
+The token stays in page memory and is cleared on reload. The API endpoints `GET /v1/sessions`, `GET /v1/latest?sessionId=...`, and `GET /v1/session-events?sessionId=...` require it; loading the page itself exposes no mission data.
 
 ## Deployment boundary
 
-`eastwing.signalprofessor.com` is a DNS name, not a running backend. Deployment needs a host able to run a persistent Python process and retain a database file, plus HTTPS and backups. Do not point the domain at this development server or expose port 8000 publicly. The API token must be set in the host's secret environment, never committed or placed in a URL. The Android debug app can send a completed mission over the USB tunnel; public HTTPS deployment and a map/track view are later milestones.
+`eastwing.signalprofessor.com` is a DNS name, not a running backend. Deployment needs a host able to run a persistent Python process and retain a database file, plus HTTPS and backups. Do not point the domain at this development server or expose port 8000 publicly. The API token must be set in the host's secret environment, never committed or placed in a URL. The Android debug app can send a completed mission over the USB tunnel; public HTTPS deployment and durable map hosting are later milestones.
 
 Run tests: `python3 -m unittest discover -s backend/tests -v`.

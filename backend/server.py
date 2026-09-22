@@ -174,12 +174,29 @@ def make_handler(db_path, token):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
             self.send_header(
                 "Content-Security-Policy",
                 "default-src 'none'; script-src 'self'; style-src 'self'; "
-                "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                "connect-src 'self'; img-src 'self' blob: https://tile.openstreetmap.org; "
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
             )
+            self.end_headers()
+            self.wfile.write(body)
+
+        def serve_topography(self):
+            if not self.authorized():
+                return
+            image_path = Path(db_path).parent / "hillshade.png"
+            if not image_path.is_file():
+                self.respond(404, {"error": "topography not generated"})
+                return
+            body = image_path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
             self.wfile.write(body)
 
@@ -195,6 +212,8 @@ def make_handler(db_path, token):
             path = request.path
             if path in STATIC_FILES:
                 self.serve_static(path)
+            elif path == "/topography.png":
+                self.serve_topography()
             elif path == "/health":
                 self.respond(200, {"status": "ok"})
             elif path == "/v1/sessions":

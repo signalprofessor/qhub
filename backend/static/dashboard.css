@@ -62,3 +62,13 @@ footer { margin-top: 22px; color: #7b8e90; font-size: 12px; }
 .map-details { display: flex; flex-wrap: wrap; gap: 10px 24px; margin-top: 14px; color: #294d50; font-size: 14px; font-weight: 650; }
 .map-note { margin: 14px 0 0; color: #6c8082; font-size: 12px; line-height: 1.5; }
 @media (max-width: 760px) { .map-panel { padding: 20px; } .track-map { min-height: 230px; } }
+
+.map-controls { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+.layer-button, .map-button { padding: 8px 12px; font-size: 13px; background: #e7efee; color: #244e4d; border: 1px solid #bdd0ce; }
+.layer-button[aria-pressed="true"] { background: #136e64; color: white; border-color: #136e64; }
+.layer-button:hover, .map-button:hover { background: #cce1dc; color: #123e3a; }
+.layer-button[aria-pressed="true"]:hover { background: #0e5d55; color: white; }
+.track-map { touch-action: none; cursor: grab; }
+.track-map.dragging { cursor: grabbing; }
+.map-attribution { margin: 10px 0 0; font-size: 12px; color: #557173; }
+.map-attribution a { color: #176d67; }
