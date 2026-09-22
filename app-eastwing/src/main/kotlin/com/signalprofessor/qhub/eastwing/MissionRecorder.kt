@@ -1,6 +1,7 @@
 package com.signalprofessor.qhub.eastwing
 
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import com.signalprofessor.qhub.core.capability.CapabilityId
@@ -149,6 +150,17 @@ class MissionRecorder(
         onState(MissionState(status = "Replay cancelled"))
     }
 
+    /** Copies a completed mission to a document chosen by the user. No network transfer occurs. */
+    fun exportLatestMission(destination: Uri): Long {
+        check(writer == null && activeReplay == null) { "Stop the mission or replay before saving its log" }
+        val source = latestMissionFile() ?: error("No recorded mission found")
+        val output = appContext.contentResolver.openOutputStream(destination, "w")
+            ?: error("Could not open the selected document")
+        val copiedBytes = source.inputStream().use { input -> output.use(input::copyTo) }
+        check(copiedBytes == source.length()) { "Saved log size differs from the original" }
+        return copiedBytes
+    }
+
     fun close() {
         replayStep?.let(mainHandler::removeCallbacks)
         replayStep = null
@@ -196,6 +208,8 @@ class MissionRecorder(
     private fun latestMissionFile(): File? = missionsDirectory.listFiles()
         ?.filter { it.isFile && it.extension == "ndjson" }
         ?.maxByOrNull(File::lastModified)
+
+    fun latestMissionName(): String? = latestMissionFile()?.name
 
     private fun clearActiveSession() {
         locationSource = null

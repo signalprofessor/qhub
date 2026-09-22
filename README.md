@@ -37,6 +37,7 @@ No source code from the Qulinda Qhub repository has been copied.
 3. Press **Start mission** and wait for the event count and position to update.
 4. Walk or drive a short route, then press **Stop mission**.
 5. Press **Replay last mission**. The replay count, final position, and file information should match the recording.
+6. Press **Save last mission log** and choose a location, such as Downloads, to export the raw NDJSON file for inspection. This is a local copy, not a backend upload.
 
 Mission logs are stored in the app-private `files/missions` directory.
 

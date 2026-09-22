@@ -20,10 +20,25 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class MainActivity : ComponentActivity() {
     private lateinit var recorder: MissionRecorder
+    private var lastState = MissionState("Ready")
     private lateinit var statusView: TextView
     private lateinit var startButton: Button
     private lateinit var stopButton: Button
     private lateinit var replayButton: Button
+    private lateinit var saveButton: Button
+
+    private val saveDocument = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/x-ndjson"),
+    ) { uri ->
+        if (uri != null) {
+            val message = runCatching { recorder.exportLatestMission(uri) }
+                .fold(
+                    onSuccess = { "Mission log saved ($it bytes)" },
+                    onFailure = { "Save failed: ${it.message ?: "unknown error"}" },
+                )
+            render(lastState.copy(status = message))
+        }
+    }
 
     private val permissionRequest = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -76,9 +91,14 @@ class MainActivity : ComponentActivity() {
                 if (text == "Cancel replay") recorder.cancelReplay() else recorder.replayLast()
             }
         }
+        saveButton = Button(this).apply {
+            text = "Save last mission log"
+            setOnClickListener { saveDocument.launch(recorder.latestMissionName() ?: "mission.ndjson") }
+        }
         content.addView(startButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         content.addView(stopButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         content.addView(replayButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        content.addView(saveButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         return ScrollView(this).apply { addView(content) }
     }
 
@@ -99,6 +119,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun render(state: MissionState) {
+        lastState = state
         val payload = state.latestEvent?.payload
         val latitude = payload?.get("latitudeDegrees")?.jsonPrimitive?.doubleOrNull
         val longitude = payload?.get("longitudeDegrees")?.jsonPrimitive?.doubleOrNull
@@ -123,5 +144,6 @@ class MainActivity : ComponentActivity() {
         stopButton.isEnabled = state.isRecording
         replayButton.isEnabled = !state.isRecording
         replayButton.text = if (state.isReplaying) "Cancel replay" else "Replay last mission"
+        saveButton.isEnabled = !state.isRecording && !state.isReplaying
     }
 }
