@@ -3,10 +3,12 @@ package com.signalprofessor.qhub.eastwing
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.text.InputType
 import android.view.Gravity
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -26,6 +28,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var stopButton: Button
     private lateinit var replayButton: Button
     private lateinit var saveButton: Button
+    private lateinit var uploadButton: Button
+    private lateinit var tokenInput: EditText
+    private var uploading = false
 
     private val saveDocument = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/x-ndjson"),
@@ -99,6 +104,20 @@ class MainActivity : ComponentActivity() {
         content.addView(stopButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         content.addView(replayButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         content.addView(saveButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        content.addView(TextView(this).apply {
+            text = "Local backend test (USB only)"
+        }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        tokenInput = EditText(this).apply {
+            hint = "Backend token"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            isSingleLine = true
+        }
+        content.addView(tokenInput, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        uploadButton = Button(this).apply {
+            text = "Send last mission to Mac"
+            setOnClickListener { uploadLastMission() }
+        }
+        content.addView(uploadButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         return ScrollView(this).apply { addView(content) }
     }
 
@@ -116,6 +135,32 @@ class MainActivity : ComponentActivity() {
             GnssLocationSource.StartResult.PermissionMissing -> render(MissionState("Location permission missing"))
             GnssLocationSource.StartResult.AlreadyRunning -> render(MissionState("Mission or replay already running"))
         }
+    }
+
+    private fun uploadLastMission() {
+        val file = runCatching { recorder.latestMissionForUpload() }.getOrElse {
+            render(lastState.copy(status = "Upload unavailable: ${it.message}"))
+            return
+        }
+        val token = tokenInput.text.toString().trim()
+        if (token.isEmpty()) {
+            render(lastState.copy(status = "Enter the backend token first"))
+            return
+        }
+        uploading = true
+        render(lastState.copy(status = "Sending mission to local backend..."))
+        Thread {
+            val result = runCatching { LocalTelemetryUploader.upload(file, token) }
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                uploading = false
+                val message = result.fold(
+                    onSuccess = { "Backend receipt: $it" },
+                    onFailure = { "Upload failed: ${it.message ?: "unknown error"}" },
+                )
+                render(lastState.copy(status = message))
+            }
+        }.start()
     }
 
     private fun render(state: MissionState) {
@@ -140,10 +185,11 @@ class MainActivity : ComponentActivity() {
             state.verification?.let { appendLine("Verification: $it") }
             append("File: ${state.fileName ?: "-"}")
         }
-        startButton.isEnabled = !state.isRecording && !state.isReplaying
+        startButton.isEnabled = !state.isRecording && !state.isReplaying && !uploading
         stopButton.isEnabled = state.isRecording
-        replayButton.isEnabled = !state.isRecording
+        replayButton.isEnabled = !state.isRecording && !uploading
         replayButton.text = if (state.isReplaying) "Cancel replay" else "Replay last mission"
-        saveButton.isEnabled = !state.isRecording && !state.isReplaying
+        saveButton.isEnabled = !state.isRecording && !state.isReplaying && !uploading
+        uploadButton.isEnabled = !state.isRecording && !state.isReplaying && !uploading
     }
 }

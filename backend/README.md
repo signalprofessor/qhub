@@ -22,8 +22,19 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 The receipt reports `received`, `inserted`, and `duplicates`. Repeating the same upload is safe: existing events are counted as duplicates. Query `GET /v1/sessions` with the same Authorization header to see session counts; `GET /health` is public and contains no mission data.
 
+## Pixel-to-Mac development test
+
+This test is local; it does not contact the public subdomain. Install the 0.5.0 debug APK on the Pixel and connect it by USB with USB debugging enabled.
+
+1. In a Mac terminal, run `python3 -m backend.dev_server` from the repository root. Leave it open and note the fresh token shown there.
+2. In another Mac terminal, run `/Users/fregu23/Library/Android/sdk/platform-tools/adb devices` and confirm the Pixel is listed as `device`. Then run `/Users/fregu23/Library/Android/sdk/platform-tools/adb reverse tcp:8000 tcp:8000`.
+3. In the app, stop a mission, enter the displayed token, and tap **Send last mission to Mac**. The receipt should report the number of inserted events. Sending the same mission again should report them as duplicates.
+4. On the Mac, stop the server with Ctrl+C. Data remains in `backend/data/local.sqlite3`, which is ignored by Git.
+
+The USB tunnel lets the Pixel's `127.0.0.1:8000` reach the Mac's local server. Only the debug APK permits cleartext traffic to this loopback address; a public deployment must use HTTPS. No token is saved in the Android app.
+
 ## Deployment boundary
 
-`eastwing.signalprofessor.com` is a DNS name, not a running backend. Deployment needs a host able to run a persistent Python process and retain a database file, plus HTTPS and backups. Do not point the domain at this development server or expose port 8000 publicly. The API token must be set in the host's secret environment, never committed or placed in a URL. The Android app does not send events to this server yet; that connection is the next milestone after hosting is chosen.
+`eastwing.signalprofessor.com` is a DNS name, not a running backend. Deployment needs a host able to run a persistent Python process and retain a database file, plus HTTPS and backups. Do not point the domain at this development server or expose port 8000 publicly. The API token must be set in the host's secret environment, never committed or placed in a URL. The Android debug app can send a completed mission over the USB tunnel; automatic live telemetry and public HTTPS deployment are later milestones.
 
 Run tests: `python3 -m unittest discover -s backend/tests -v`.

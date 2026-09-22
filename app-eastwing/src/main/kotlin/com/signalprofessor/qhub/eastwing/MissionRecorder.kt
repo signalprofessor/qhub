@@ -211,6 +211,11 @@ class MissionRecorder(
 
     fun latestMissionName(): String? = latestMissionFile()?.name
 
+    fun latestMissionForUpload(): File {
+        check(writer == null && activeReplay == null) { "Stop the mission or replay first" }
+        return latestMissionFile() ?: error("No recorded mission found")
+    }
+
     private fun clearActiveSession() {
         locationSource = null
         writer = null
