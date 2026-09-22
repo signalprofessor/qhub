@@ -12,6 +12,8 @@ const ui = {
   accuracy: document.getElementById("accuracy"),
   altitude: document.getElementById("altitude"),
   pressure: document.getElementById("pressure"),
+  heightChart: document.getElementById("height-chart"),
+  heightStatus: document.getElementById("height-status"),
   count: document.getElementById("event-count"),
   sequence: document.getElementById("sequence"),
   time: document.getElementById("event-time"),
@@ -86,6 +88,57 @@ function updateSessions(sessions) {
   }
   ui.session.disabled = !selectedSession;
   if (selectedSession) ui.session.value = selectedSession;
+}
+
+function drawHeight(events) {
+  const gnss = events.filter(item => item.eventType === "navigation.gnss")
+    .map(item => ({t: item.timestamp?.utcEpochMillis, h: item.payload?.altitudeMeters}))
+    .filter(item => Number.isFinite(item.t) && Number.isFinite(item.h));
+  const pressure = events.filter(item => item.eventType === "navigation.pressure")
+    .map(item => ({t: item.timestamp?.utcEpochMillis, p: item.payload?.pressureHectopascals}))
+    .filter(item => Number.isFinite(item.t) && Number.isFinite(item.p) && item.p > 0);
+  ui.heightChart.replaceChildren();
+  if (!gnss.length) {
+    ui.heightStatus.textContent = pressure.length
+      ? "Pressure is present, but GNSS altitude is needed to anchor the barometric estimate."
+      : "No height or pressure measurements in this session.";
+    return;
+  }
+  const anchor = gnss[0];
+  const reference = pressure[0];
+  const baro = anchor && reference ? pressure.map(item => ({
+    t: item.t, h: anchor.h + 8434.5 * Math.log(reference.p / item.p),
+  })) : [];
+  const points = gnss.concat(baro);
+  const t0 = Math.min(...points.map(item => item.t));
+  const t1 = Math.max(...points.map(item => item.t));
+  const h0 = Math.min(...points.map(item => item.h));
+  const h1 = Math.max(...points.map(item => item.h));
+  const low = h0 - Math.max(2, (h1 - h0) * .1);
+  const high = h1 + Math.max(2, (h1 - h0) * .1);
+  const x = t => 62 + 815 * (t - t0) / Math.max(1000, t1 - t0);
+  const y = h => 260 - 225 * (h - low) / (high - low);
+  for (let i = 0; i <= 4; i++) {
+    const height = low + (high - low) * i / 4;
+    const yy = y(height);
+    ui.heightChart.append(svgElement("line", {x1: 62, x2: 878, y1: yy, y2: yy, stroke: "#dce7e7"}));
+    const label = svgElement("text", {x: 55, y: yy + 4, "text-anchor": "end", fill: "#587074", "font-size": 12});
+    label.textContent = height.toFixed(0);
+    ui.heightChart.append(label);
+  }
+  for (const [value, labelText] of [[t0, "0"], [t1, ((t1 - t0) / 1000).toFixed(0) + " s"]]) {
+    const label = svgElement("text", {x: x(value), y: 287, "text-anchor": value === t0 ? "start" : "end", fill: "#587074", "font-size": 12});
+    label.textContent = labelText;
+    ui.heightChart.append(label);
+  }
+  function line(data, color) {
+    if (!data.length) return;
+    const d = data.map((item, index) => `${index ? "L" : "M"}${x(item.t).toFixed(1)},${y(item.h).toFixed(1)}`).join(" ");
+    ui.heightChart.append(svgElement("path", {d, fill: "none", stroke: color, "stroke-width": 2.5, "stroke-linejoin": "round"}));
+  }
+  line(baro, "#df8f35");
+  line(gnss, "#176d67");
+  ui.heightStatus.textContent = `${gnss.length} GNSS heights · ${baro.length} barometric estimates · DEM height not yet available`;
 }
 
 function showLatest(event, summary) {
@@ -306,6 +359,7 @@ async function refresh() {
         if (item.eventType === "navigation.pressure") latestPressure = item;
       }
       drawTrack(history.events);
+      drawHeight(history.events);
       historySession = selectedSession;
       historySequence = summary.lastSequence;
     }

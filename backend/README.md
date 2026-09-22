@@ -20,7 +20,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
   http://127.0.0.1:8000/v1/events
 ```
 
-The receipt reports `received`, `inserted`, and `duplicates`. Repeating the same upload is safe: existing events are counted as duplicates. Query `GET /v1/sessions` with the same Authorization header to see session counts; `GET /health` is public and contains no mission data.
+The app splits completed mission logs into batches of at most 500 events and 900 kB; its aggregate receipt reports `received`, `inserted`, `duplicates`, and `batches`. The backend receipt for each batch reports `received`, `inserted`, and `duplicates`. Repeating the same upload is safe: existing events are counted as duplicates. Query `GET /v1/sessions` with the same Authorization header to see session counts; `GET /health` is public and contains no mission data.
 
 ## Pixel-to-Mac development test
 
@@ -66,3 +66,5 @@ Before any public or wireless deployment, use HTTPS/TLS, stronger production aut
 `eastwing.signalprofessor.com` is a DNS name, not a running backend. Deployment needs a host able to run a persistent Python process and retain a database file, plus HTTPS and backups. Do not point the domain at this development server or expose port 8000 publicly. The API token must be set in the host's secret environment, never committed or placed in a URL. The Android debug app can send a completed mission over the USB tunnel; public HTTPS deployment and durable map hosting are later milestones.
 
 Run tests: `python3 -m unittest discover -s backend/tests -v`.
+
+The dashboard height plot shows GNSS altitude and an experimental barometric relative-height estimate. The latter uses the first GNSS altitude as a display offset and the first pressure sample as a pressure reference (`8434.5 ln(p0/p)` metres). It is not a calibrated absolute height. DEM height is deliberately labelled as pending until the GeoTIFF can be sampled at georeferenced GNSS positions; the contour overlay alone is insufficient.

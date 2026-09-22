@@ -16,6 +16,9 @@ import com.signalprofessor.qhub.navigation.GnssSample
 import com.signalprofessor.qhub.navigation.PRESSURE_EVENT_TYPE
 import com.signalprofessor.qhub.navigation.PressureSample
 import com.signalprofessor.qhub.navigation.PressureSensorSource
+import com.signalprofessor.qhub.navigation.ROTATION_VECTOR_EVENT_TYPE
+import com.signalprofessor.qhub.navigation.RotationVectorSample
+import com.signalprofessor.qhub.navigation.RotationVectorSource
 import com.signalprofessor.qhub.navigation.toEventPayload
 import java.io.File
 import java.text.SimpleDateFormat
@@ -38,6 +41,7 @@ class MissionRecorder(
 
     private var locationSource: GnssLocationSource? = null
     private var pressureSource: PressureSensorSource? = null
+    private var rotationSource: RotationVectorSource? = null
     private var pressureAvailable: Boolean? = null
     private var latestGnssEvent: EventEnvelope? = null
     private var latestPressureEvent: EventEnvelope? = null
@@ -58,6 +62,7 @@ class MissionRecorder(
         val pendingWriter = NdjsonEventWriter(file)
         val pendingSource = GnssLocationSource(appContext, ::recordSample)
         val pendingPressureSource = PressureSensorSource(appContext, ::recordPressure)
+        val pendingRotationSource = RotationVectorSource(appContext, ::recordRotation)
 
         writer = pendingWriter
         factory = EventFactory(deviceId, sessionId, AndroidQhubClock)
@@ -79,6 +84,7 @@ class MissionRecorder(
         }
         pressureAvailable = pendingPressureSource.start() == PressureSensorSource.StartResult.Started
         if (pressureAvailable == true) pressureSource = pendingPressureSource
+        if (pendingRotationSource.start() == RotationVectorSource.StartResult.Started) rotationSource = pendingRotationSource
         publishRecordingState(null)
         return result
     }
@@ -86,6 +92,7 @@ class MissionRecorder(
     fun stop() {
         locationSource?.stop()
         pressureSource?.stop()
+        rotationSource?.stop()
         writer?.close()
         val completedFile = currentFile
         if (completedFile != null) {
@@ -232,6 +239,19 @@ class MissionRecorder(
         publishRecordingState(event)
     }
 
+    private fun recordRotation(sample: RotationVectorSample) {
+        val event = factory?.create(
+            source = NAVIGATION_CAPABILITY_ID,
+            eventType = ROTATION_VECTOR_EVENT_TYPE,
+            payload = sample.toEventPayload(),
+        ) ?: return
+        writer?.append(event)
+        eventCount += 1
+        lastRecordedEvent = event
+        onRecordedEvent(event)
+        publishRecordingState(event)
+    }
+
     private fun publishRecordingState(event: EventEnvelope?) {
         onState(
             MissionState(
@@ -264,6 +284,7 @@ class MissionRecorder(
     private fun clearActiveSession() {
         locationSource = null
         pressureSource = null
+        rotationSource = null
         writer = null
         factory = null
         currentFile = null

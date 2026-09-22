@@ -72,3 +72,12 @@ footer { margin-top: 22px; color: #7b8e90; font-size: 12px; }
 .track-map.dragging { cursor: grabbing; }
 .map-attribution { margin: 10px 0 0; font-size: 12px; color: #557173; }
 .map-attribution a { color: #176d67; }
+
+.height-panel { margin-top: 18px; padding: 28px; }
+.height-chart { display: block; width: 100%; height: auto; min-height: 230px; border: 1px solid #dce7e7; border-radius: 12px; background: #fbfdfd; }
+.height-legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; color: #486366; font-size: 13px; }
+.height-legend span::before { content: ""; display: inline-block; width: 18px; border-top: 3px solid; vertical-align: middle; margin-right: 7px; }
+.height-gnss::before { border-color: #176d67; }
+.height-pressure::before { border-color: #df8f35; }
+.height-dem::before { border-color: #a8b6b3; border-top-style: dashed !important; }
+@media (max-width: 760px) { .height-panel { padding: 20px; } .height-chart { min-height: 180px; } }

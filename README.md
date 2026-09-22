@@ -23,7 +23,7 @@ Qhub is a modular Android platform for the EastWing drone mission system. The fi
 
 - `platform-core`: platform-neutral event and capability contracts
 - `event-log`: append-only NDJSON logging and deterministic replay
-- `capabilities/navigation`: Pixel GNSS and barometer acquisition with raw, timestamped event payloads
+- `capabilities/navigation`: Pixel GNSS, barometer, and rotation-vector acquisition with raw, timestamped event payloads
 - `app-eastwing`: mission recording, replay, export, and opt-in local telemetry UI
 - `backend`: token-protected HTTP ingestion, SQLite storage, and local read-only telemetry dashboard
 - dual-clock timestamps, identity, schema versioning, and sequence numbers
@@ -50,3 +50,5 @@ Use Android Studio's bundled JDK and an installed Android SDK:
 ./gradlew clean test :app-eastwing:assembleDebug
 ./gradlew :app-eastwing:lintDebug
 ```
+
+Rotation-vector events (`navigation.rotation_vector`) store the Android fused sensor quaternion components `x`, `y`, `z`, optional `w`, optional heading accuracy in radians, sensor accuracy, and elapsed-realtime sensor timestamp at about 1 Hz. Values use Android device coordinates; no phone-to-vehicle mounting alignment or magnetic/true-north correction is assumed.
