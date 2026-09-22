@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EastWing | Local telemetry</title>
+  <link rel="stylesheet" href="/dashboard.css">
+  <script src="/dashboard.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">EASTWING / QHUB</p>
+        <h1>Mission telemetry</h1>
+        <p class="subtitle">A read-only view of GNSS events received by the local backend.</p>
+      </div>
+      <span class="local-badge">LOCAL TEST</span>
+    </header>
+
+    <section class="panel connection" aria-labelledby="connection-title">
+      <div>
+        <h2 id="connection-title">Connect to local data</h2>
+        <p>Enter the backend token shown in the Mac terminal. It stays in this page's memory and is cleared on reload.</p>
+      </div>
+      <div class="connect-controls">
+        <label for="token">Backend token</label>
+        <div class="token-row">
+          <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="16-character local token">
+          <button id="connect" type="button">Connect</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="connection-status" class="notice" role="status" aria-live="polite">Enter a token to view sessions.</div>
+
+    <section class="panel mission" aria-labelledby="mission-title">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">CURRENT VIEW</p>
+          <h2 id="mission-title">Mission session</h2>
+        </div>
+        <div class="session-control">
+          <label for="session">Session</label>
+          <select id="session" disabled><option>No session selected</option></select>
+        </div>
+      </div>
+      <p id="freshness" class="freshness">No telemetry loaded.</p>
+      <div class="metrics">
+        <article class="metric wide"><span>Position</span><strong id="position">—</strong><small>Latitude, longitude · WGS84</small></article>
+        <article class="metric"><span>Speed</span><strong id="speed">—</strong><small>m/s from GNSS</small></article>
+        <article class="metric"><span>Heading</span><strong id="heading">—</strong><small>degrees from GNSS, if available</small></article>
+        <article class="metric"><span>Horizontal accuracy</span><strong id="accuracy">—</strong><small>metres; lower is better</small></article>
+        <article class="metric"><span>Altitude</span><strong id="altitude">—</strong><small>metres from GNSS</small></article>
+        <article class="metric"><span>Events received</span><strong id="event-count">—</strong><small id="sequence">Sequence —</small></article>
+        <article class="metric"><span>Measurement time</span><strong id="event-time" class="time-value">—</strong><small>Phone UTC clock, shown in your local time</small></article>
+      </div>
+    </section>
+
+    <footer>Local development view · Not published at eastwing.signalprofessor.com · No map tiles or third-party services</footer>
+  </main>
+</body>
+</html>

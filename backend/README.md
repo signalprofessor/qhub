@@ -24,7 +24,7 @@ The receipt reports `received`, `inserted`, and `duplicates`. Repeating the same
 
 ## Pixel-to-Mac development test
 
-This test is local; it does not contact the public subdomain. Install the 0.5.0 debug APK on the Pixel and connect it by USB with USB debugging enabled.
+This test is local; it does not contact the public subdomain. Install the latest debug APK on the Pixel and connect it by USB with USB debugging enabled.
 
 1. In a Mac terminal, run `python3 -m backend.dev_server` from the repository root. Leave it open and note the fresh token shown there.
 2. In another Mac terminal, run `/Users/fregu23/Library/Android/sdk/platform-tools/adb devices` and confirm the Pixel is listed as `device`. Then run `/Users/fregu23/Library/Android/sdk/platform-tools/adb reverse tcp:8000 tcp:8000`.
@@ -33,14 +33,20 @@ This test is local; it does not contact the public subdomain. Install the 0.5.0 
 
 The USB tunnel lets the Pixel's `127.0.0.1:8000` reach the Mac's local server. Only the debug APK permits cleartext traffic to this loopback address; a public deployment must use HTTPS. No token is saved in the Android app.
 
-## Opt-in live telemetry trial (0.6.0 debug APK)
+## Opt-in live telemetry trial (0.6.0 or newer debug APK)
 
 With the Pixel attached by USB, start `python3 -m backend.dev_server --port 8001` on the Mac, then run `adb reverse tcp:8000 tcp:8001` using Android SDK platform-tools. Enter the new token in the app. Tap **Turn live telemetry ON**, then **Start mission**. As GNSS events arrive, the live status shows sent and failed counts. Stop the mission and turn live telemetry off.
 
 Live sending is best-effort and works only while the app is in the foreground. It does not retry failed events or backfill earlier events. The local NDJSON log remains complete; use **Send last mission to Mac** after stopping the mission to recover any events that failed to send live. The backend recognizes duplicates, so this recovery upload is safe.
 
+## Local telemetry dashboard
+
+While the local backend is running, open `http://127.0.0.1:8001/dashboard` on the Mac (or use the port chosen for `backend.dev_server`). Enter the current token shown by the server. The page lists stored sessions and refreshes the selected session once per second, showing the latest position, speed, heading if available, horizontal accuracy, altitude, measurement time, and event count. An old session is labelled as having no recent event; the page does not imply that a mission is still running.
+
+This page is read-only. It uses no external map tiles, scripts, or analytics. The token is kept only in page memory and is cleared on reload. The API endpoints `GET /v1/sessions` and `GET /v1/latest?sessionId=...` require the token; loading the page itself exposes no mission data.
+
 ## Deployment boundary
 
-`eastwing.signalprofessor.com` is a DNS name, not a running backend. Deployment needs a host able to run a persistent Python process and retain a database file, plus HTTPS and backups. Do not point the domain at this development server or expose port 8000 publicly. The API token must be set in the host's secret environment, never committed or placed in a URL. The Android debug app can send a completed mission over the USB tunnel; automatic live telemetry and public HTTPS deployment are later milestones.
+`eastwing.signalprofessor.com` is a DNS name, not a running backend. Deployment needs a host able to run a persistent Python process and retain a database file, plus HTTPS and backups. Do not point the domain at this development server or expose port 8000 publicly. The API token must be set in the host's secret environment, never committed or placed in a URL. The Android debug app can send a completed mission over the USB tunnel; public HTTPS deployment and a map/track view are later milestones.
 
 Run tests: `python3 -m unittest discover -s backend/tests -v`.

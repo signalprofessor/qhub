@@ -24,7 +24,8 @@ Qhub is a modular Android platform for the EastWing drone mission system. The fi
 - `platform-core`: platform-neutral event and capability contracts
 - `event-log`: append-only NDJSON logging and deterministic replay
 - `capabilities/navigation`: Pixel GNSS acquisition and raw GNSS event payloads
-- `app-eastwing`: mission start, stop, status, and replay UI
+- `app-eastwing`: mission recording, replay, export, and opt-in local telemetry UI
+- `backend`: token-protected HTTP ingestion, SQLite storage, and local read-only telemetry dashboard
 - dual-clock timestamps, identity, schema versioning, and sequence numbers
 - tested event round trips and capability lifecycle behavior
 

@@ -6,10 +6,16 @@ import os
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 MAX_BODY_BYTES = 1_000_000
 MAX_EVENTS = 1_000
+STATIC_DIRECTORY = Path(__file__).resolve().parent / "static"
+STATIC_FILES = {
+    "/dashboard": ("dashboard.html", "text/html; charset=utf-8"),
+    "/dashboard.css": ("dashboard.css", "text/css; charset=utf-8"),
+    "/dashboard.js": ("dashboard.js", "text/javascript; charset=utf-8"),
+}
 
 
 class InvalidBatch(ValueError):
@@ -127,6 +133,15 @@ def sessions(db_path):
     ]
 
 
+def latest_event(db_path, session_id):
+    with connect(db_path) as db:
+        row = db.execute(
+            "SELECT raw_json FROM events WHERE session_id = ? ORDER BY sequence DESC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+    return json.loads(row[0]) if row else None
+
+
 def make_handler(db_path, token):
     class Handler(BaseHTTPRequestHandler):
         def respond(self, status, data):
@@ -135,6 +150,24 @@ def make_handler(db_path, token):
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def serve_static(self, path):
+            filename, content_type = STATIC_FILES[path]
+            body = (STATIC_DIRECTORY / filename).read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; script-src 'self'; style-src 'self'; "
+                "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+            )
             self.end_headers()
             self.wfile.write(body)
 
@@ -146,12 +179,27 @@ def make_handler(db_path, token):
             return True
 
         def do_GET(self):
-            path = urlsplit(self.path).path
-            if path == "/health":
+            request = urlsplit(self.path)
+            path = request.path
+            if path in STATIC_FILES:
+                self.serve_static(path)
+            elif path == "/health":
                 self.respond(200, {"status": "ok"})
             elif path == "/v1/sessions":
                 if self.authorized():
                     self.respond(200, {"sessions": sessions(db_path)})
+            elif path == "/v1/latest":
+                if not self.authorized():
+                    return
+                ids = parse_qs(request.query, keep_blank_values=True).get("sessionId", [])
+                if len(ids) != 1 or not ids[0] or len(ids[0]) > 200:
+                    self.respond(400, {"error": "one sessionId is required"})
+                    return
+                event = latest_event(db_path, ids[0])
+                if event is None:
+                    self.respond(404, {"error": "session not found"})
+                else:
+                    self.respond(200, {"event": event})
             else:
                 self.respond(404, {"error": "not found"})
 
