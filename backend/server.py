@@ -8,6 +8,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from backend.terrain import CACHE_NAME, sampled_session
+
 MAX_BODY_BYTES = 1_000_000
 MAX_EVENTS = 1_000
 MAX_HISTORY_EVENTS = 20_000
@@ -231,6 +233,30 @@ def make_handler(db_path, token):
                     self.respond(404, {"error": "session not found"})
                 else:
                     self.respond(200, {"event": event})
+            elif path == "/v1/session-terrain":
+                if not self.authorized():
+                    return
+                ids = parse_qs(request.query, keep_blank_values=True).get("sessionId", [])
+                if len(ids) != 1 or not ids[0] or len(ids[0]) > 200:
+                    self.respond(400, {"error": "one sessionId is required"})
+                    return
+                cache_path = Path(db_path).parent / CACHE_NAME
+                if not cache_path.is_file():
+                    self.respond(404, {"error": "local DEM cache not prepared"})
+                    return
+                events = session_events(db_path, ids[0])
+                if events is None:
+                    self.respond(413, {"error": "session exceeds 20000 events; paging is not yet supported"})
+                elif not events:
+                    self.respond(404, {"error": "session not found"})
+                else:
+                    try:
+                        heights = sampled_session(events, cache_path)
+                    except (OSError, ValueError):
+                        self.respond(500, {"error": "local DEM cache invalid"})
+                    else:
+                        self.respond(200, {"heights": heights, "gnssCount": sum(
+                            item["eventType"] == "navigation.gnss" for item in events)})
             elif path == "/v1/session-events":
                 if not self.authorized():
                     return

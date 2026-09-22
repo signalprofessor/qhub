@@ -90,7 +90,7 @@ function updateSessions(sessions) {
   if (selectedSession) ui.session.value = selectedSession;
 }
 
-function drawHeight(events) {
+function drawHeight(events, terrain = [], demAvailable = false) {
   const gnss = events.filter(item => item.eventType === "navigation.gnss")
     .map(item => ({t: item.timestamp?.utcEpochMillis, h: item.payload?.altitudeMeters}))
     .filter(item => Number.isFinite(item.t) && Number.isFinite(item.h));
@@ -98,10 +98,12 @@ function drawHeight(events) {
     .map(item => ({t: item.timestamp?.utcEpochMillis, p: item.payload?.pressureHectopascals}))
     .filter(item => Number.isFinite(item.t) && Number.isFinite(item.p) && item.p > 0);
   ui.heightChart.replaceChildren();
-  if (!gnss.length) {
+  const dem = terrain.filter(item => Number.isFinite(item.terrainMeters))
+    .map(item => ({t: item.utcEpochMillis, h: item.terrainMeters}));
+  if (!gnss.length && !dem.length) {
     ui.heightStatus.textContent = pressure.length
       ? "Pressure is present, but GNSS altitude is needed to anchor the barometric estimate."
-      : "No height or pressure measurements in this session.";
+      : "No height measurements in this session.";
     return;
   }
   const anchor = gnss[0];
@@ -109,7 +111,7 @@ function drawHeight(events) {
   const baro = anchor && reference ? pressure.map(item => ({
     t: item.t, h: anchor.h + 8434.5 * Math.log(reference.p / item.p),
   })) : [];
-  const points = gnss.concat(baro);
+  const points = gnss.concat(baro, dem);
   const t0 = Math.min(...points.map(item => item.t));
   const t1 = Math.max(...points.map(item => item.t));
   const h0 = Math.min(...points.map(item => item.h));
@@ -138,7 +140,19 @@ function drawHeight(events) {
   }
   line(baro, "#df8f35");
   line(gnss, "#176d67");
-  ui.heightStatus.textContent = `${gnss.length} GNSS heights · ${baro.length} barometric estimates · DEM height not yet available`;
+  if (dem.length) {
+    let penDown = false;
+    const d = terrain.map(item => {
+      if (!Number.isFinite(item.terrainMeters)) { penDown = false; return ""; }
+      const point = `${x(item.utcEpochMillis).toFixed(1)},${y(item.terrainMeters).toFixed(1)}`;
+      const command = penDown ? `L${point}` : `M${point} l0.1,0`;
+      penDown = true;
+      return command;
+    }).join(" ");
+    ui.heightChart.append(svgElement("path", {d, fill: "none", stroke: "#7a4c9b", "stroke-width": 2.5}));
+  }
+  ui.heightStatus.textContent = `${gnss.length} GNSS heights · ${baro.length} barometric estimates · ` +
+    (demAvailable ? `${dem.length} GNSS fixes inside DEM tile` : "DEM cache not prepared");
 }
 
 function showLatest(event, summary) {
@@ -359,7 +373,13 @@ async function refresh() {
         if (item.eventType === "navigation.pressure") latestPressure = item;
       }
       drawTrack(history.events);
-      drawHeight(history.events);
+      let terrain = null;
+      try {
+        terrain = await api("/v1/session-terrain?sessionId=" + encodeURIComponent(selectedSession));
+      } catch (error) {
+        if (!String(error.message).includes("HTTP 404")) throw error;
+      }
+      drawHeight(history.events, terrain?.heights || [], terrain !== null);
       historySession = selectedSession;
       historySequence = summary.lastSequence;
     }

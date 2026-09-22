@@ -21,3 +21,4 @@ __pycache__/
 
 # Locally generated terrain visualizations; source DEM is not redistributed.
 backend/data/*.png
+backend/data/*.f32

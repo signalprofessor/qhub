@@ -67,4 +67,12 @@ Before any public or wireless deployment, use HTTPS/TLS, stronger production aut
 
 Run tests: `python3 -m unittest discover -s backend/tests -v`.
 
-The dashboard height plot shows GNSS altitude and an experimental barometric relative-height estimate. The latter uses the first GNSS altitude as a display offset and the first pressure sample as a pressure reference (`8434.5 ln(p0/p)` metres). It is not a calibrated absolute height. DEM height is deliberately labelled as pending until the GeoTIFF can be sampled at georeferenced GNSS positions; the contour overlay alone is insufficient.
+The dashboard height plot shows GNSS altitude, an experimental barometric relative-height estimate, and DEM terrain height for GNSS fixes inside the tile. The barometric curve uses the first GNSS altitude as a display offset and the first pressure sample as a pressure reference (`8434.5 ln(p0/p)` metres). It is not a calibrated absolute height. The DEM line is bilinearly sampled from the original 1 m raster, with gaps outside the tile or over no-data pixels; the contour overlay is not used as an elevation source. GNSS and DEM vertical reference frames have not been reconciled, so their difference is not yet a validated phone-above-ground height.
+
+Prepare the private local DEM cache once, using a Python environment with Pillow and NumPy:
+
+```sh
+python3 -m backend.prepare_dem /path/to/6472500_535000.tif
+```
+
+This verifies 2500 × 2500 float32 data, 1 m pixels, origin E 535000/N 6472500, and EPSG:3006, then writes `backend/data/6472500_535000.f32` (25 MB, Git-ignored). The running HTTP server uses only Python's standard library to memory-map that cache and bilinearly sample four pixels per fix. Restart the server after upgrading its code. The authenticated `GET /v1/session-terrain?sessionId=...` endpoint returns a height or `null` for each valid GNSS fix; it does not expose the raster itself. If the cache is absent, the dashboard keeps showing GNSS/barometric height and labels DEM as unavailable.

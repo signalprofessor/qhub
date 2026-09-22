@@ -79,6 +79,30 @@ class BackendHttpTest(unittest.TestCase):
         self.assertIn(b"/v1/latest", response.read())
         connection.close()
 
+    def test_session_terrain_requires_token_and_samples_inside_tile(self):
+        import struct
+        from backend.terrain import CACHE_NAME, SIZE
+        inside = event()
+        inside["payload"] = {"latitudeDegrees": 58.380583904641014,
+                             "longitudeDegrees": 15.61986762111991}
+        outside = event(1, "event-1")
+        body = (json.dumps(inside) + "\n" + json.dumps(outside) + "\n").encode()
+        self.assertEqual(self.request("POST", "/v1/events", body)[0], 200)
+        self.assertEqual(self.request("GET", "/v1/session-terrain?sessionId=session-1", token="wrong")[0], 401)
+        self.assertEqual(self.request("GET", "/v1/session-terrain?sessionId=session-1")[0], 404)
+        cache = Path(self.tmp.name) / CACHE_NAME
+        with cache.open("wb") as file:
+            file.truncate(SIZE * SIZE * 4)
+            for row in (1249, 1250):
+                for col in (1249, 1250):
+                    file.seek(4 * (row * SIZE + col))
+                    file.write(struct.pack("<f", 77.5))
+        status, result = self.request("GET", "/v1/session-terrain?sessionId=session-1")
+        self.assertEqual(status, 200)
+        self.assertEqual(result["gnssCount"], 2)
+        self.assertEqual(result["heights"][0]["terrainMeters"], 77.5)
+        self.assertIsNone(result["heights"][1]["terrainMeters"])
+
     def test_topography_requires_token_and_is_not_public(self):
         self.assertEqual(self.request("GET", "/contours.png", token="wrong")[0], 401)
         self.assertEqual(self.request("GET", "/contours.png")[0], 404)
