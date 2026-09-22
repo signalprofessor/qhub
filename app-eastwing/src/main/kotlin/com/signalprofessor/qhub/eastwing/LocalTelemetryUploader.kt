@@ -14,6 +14,12 @@ internal object LocalTelemetryUploader {
         require(file.isFile && file.length() > 0) { "No GNSS events in this mission" }
         require(file.length() <= MAX_BYTES) { "Mission exceeds the first backend's 1 MB batch limit" }
 
+        return uploadPayload(file.readBytes(), token)
+    }
+
+    fun uploadPayload(payload: ByteArray, token: String): String {
+        require(token.isNotBlank()) { "Enter the backend token" }
+        require(payload.isNotEmpty() && payload.size <= MAX_BYTES) { "Invalid telemetry batch size" }
         val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 10_000
@@ -21,12 +27,10 @@ internal object LocalTelemetryUploader {
             doOutput = true
             setRequestProperty("Authorization", "Bearer $token")
             setRequestProperty("Content-Type", "application/x-ndjson")
-            setFixedLengthStreamingMode(file.length())
+            setFixedLengthStreamingMode(payload.size)
         }
         try {
-            file.inputStream().use { input ->
-                connection.outputStream.use { output -> input.copyTo(output) }
-            }
+            connection.outputStream.use { output -> output.write(payload) }
             val code = connection.responseCode
             val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
                 ?.bufferedReader()?.use { it.readText() }.orEmpty()

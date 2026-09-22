@@ -22,6 +22,7 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class MainActivity : ComponentActivity() {
     private lateinit var recorder: MissionRecorder
+    private lateinit var liveSender: LiveTelemetrySender
     private var lastState = MissionState("Ready")
     private lateinit var statusView: TextView
     private lateinit var startButton: Button
@@ -29,6 +30,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var replayButton: Button
     private lateinit var saveButton: Button
     private lateinit var uploadButton: Button
+    private lateinit var liveButton: Button
+    private lateinit var liveStatusView: TextView
     private lateinit var tokenInput: EditText
     private var uploading = false
 
@@ -53,12 +56,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        recorder = MissionRecorder(this, ::render)
+        liveSender = LiveTelemetrySender(::showLiveStatus)
+        recorder = MissionRecorder(this, ::render, liveSender::enqueue)
         setContentView(buildContent())
         render(MissionState("Ready"))
     }
 
+    override fun onStop() {
+        liveSender.disable()
+        super.onStop()
+    }
+
     override fun onDestroy() {
+        liveSender.disable()
         recorder.close()
         super.onDestroy()
     }
@@ -118,6 +128,13 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { uploadLastMission() }
         }
         content.addView(uploadButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        liveStatusView = TextView(this).apply { text = "Live OFF" }
+        content.addView(liveStatusView, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        liveButton = Button(this).apply {
+            text = "Turn live telemetry ON"
+            setOnClickListener { toggleLiveTelemetry() }
+        }
+        content.addView(liveButton, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         return ScrollView(this).apply { addView(content) }
     }
 
@@ -163,6 +180,27 @@ class MainActivity : ComponentActivity() {
         }.start()
     }
 
+    private fun toggleLiveTelemetry() {
+        if (liveSender.isEnabled) {
+            liveSender.disable()
+        } else {
+            val token = tokenInput.text.toString().trim()
+            runCatching { liveSender.enable(token) }.onFailure {
+                showLiveStatus("Live OFF: " + (it.message ?: "could not start"))
+            }
+        }
+        liveButton.text = if (liveSender.isEnabled) "Turn live telemetry OFF" else "Turn live telemetry ON"
+    }
+
+    private fun showLiveStatus(message: String) {
+        runOnUiThread {
+            if (!isDestroyed) {
+                liveStatusView.text = message
+                liveButton.text = if (liveSender.isEnabled) "Turn live telemetry OFF" else "Turn live telemetry ON"
+            }
+        }
+    }
+
     private fun render(state: MissionState) {
         lastState = state
         val payload = state.latestEvent?.payload
@@ -191,5 +229,6 @@ class MainActivity : ComponentActivity() {
         replayButton.text = if (state.isReplaying) "Cancel replay" else "Replay last mission"
         saveButton.isEnabled = !state.isRecording && !state.isReplaying && !uploading
         uploadButton.isEnabled = !state.isRecording && !state.isReplaying && !uploading
+        liveButton.isEnabled = !state.isReplaying && !uploading
     }
 }

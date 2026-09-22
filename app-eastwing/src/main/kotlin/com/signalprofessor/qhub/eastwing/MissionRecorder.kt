@@ -23,6 +23,7 @@ import java.util.UUID
 class MissionRecorder(
     context: Context,
     private val onState: (MissionState) -> Unit,
+    private val onRecordedEvent: (EventEnvelope) -> Unit = {},
 ) {
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -188,6 +189,7 @@ class MissionRecorder(
         writer?.append(event)
         eventCount += 1
         lastRecordedEvent = event
+        onRecordedEvent(event)
         publishRecordingState(event)
     }
 
