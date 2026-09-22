@@ -57,6 +57,24 @@
       </div>
     </section>
 
+    <section class="panel map-panel" aria-labelledby="map-title">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">TERRAIN / SWEREF 99 TM</p>
+          <h2 id="map-title">Trajectory and DEM tile</h2>
+        </div>
+        <span class="map-legend">Blue: GNSS track · Green: 2.5 km DEM tile</span>
+      </div>
+      <p id="map-status" class="freshness">Connect to load the trajectory.</p>
+      <svg id="track-map" class="track-map" viewBox="0 0 900 500" role="img" aria-label="GNSS trajectory and DEM tile in SWEREF 99 TM"></svg>
+      <div class="map-details">
+        <span id="map-fixes">—</span>
+        <span id="map-inside">—</span>
+        <span id="map-scale">—</span>
+      </div>
+      <p class="map-note">The green square is the footprint of 6472500_535000.tif (EPSG:3006; E 535000–537500, N 6470000–6472500). Terrain shading is a later layer; this view makes no external map requests.</p>
+    </section>
+
     <footer>Local development view · Not published at eastwing.signalprofessor.com · No map tiles or third-party services</footer>
   </main>
 </body>

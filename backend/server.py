@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 
 MAX_BODY_BYTES = 1_000_000
 MAX_EVENTS = 1_000
+MAX_HISTORY_EVENTS = 20_000
 STATIC_DIRECTORY = Path(__file__).resolve().parent / "static"
 STATIC_FILES = {
     "/dashboard": ("dashboard.html", "text/html; charset=utf-8"),
@@ -142,6 +143,17 @@ def latest_event(db_path, session_id):
     return json.loads(row[0]) if row else None
 
 
+def session_events(db_path, session_id):
+    with connect(db_path) as db:
+        rows = db.execute(
+            "SELECT raw_json FROM events WHERE session_id = ? ORDER BY sequence LIMIT ?",
+            (session_id, MAX_HISTORY_EVENTS + 1),
+        ).fetchall()
+    if len(rows) > MAX_HISTORY_EVENTS:
+        return None
+    return [json.loads(row[0]) for row in rows]
+
+
 def make_handler(db_path, token):
     class Handler(BaseHTTPRequestHandler):
         def respond(self, status, data):
@@ -200,6 +212,20 @@ def make_handler(db_path, token):
                     self.respond(404, {"error": "session not found"})
                 else:
                     self.respond(200, {"event": event})
+            elif path == "/v1/session-events":
+                if not self.authorized():
+                    return
+                ids = parse_qs(request.query, keep_blank_values=True).get("sessionId", [])
+                if len(ids) != 1 or not ids[0] or len(ids[0]) > 200:
+                    self.respond(400, {"error": "one sessionId is required"})
+                    return
+                events = session_events(db_path, ids[0])
+                if events is None:
+                    self.respond(413, {"error": "session exceeds 20000 events; paging is not yet supported"})
+                elif not events:
+                    self.respond(404, {"error": "session not found"})
+                else:
+                    self.respond(200, {"events": events})
             else:
                 self.respond(404, {"error": "not found"})
 

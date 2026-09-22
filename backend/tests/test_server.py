@@ -90,6 +90,17 @@ class BackendHttpTest(unittest.TestCase):
         self.assertEqual(result["event"]["sequence"], 1)
         self.assertEqual(result["event"]["eventId"], "event-1")
 
+    def test_session_history_requires_token_and_orders_events(self):
+        body = (json.dumps(event(1, "event-1")) + "\n" +
+                json.dumps(event(0, "event-0")) + "\n").encode()
+        self.assertEqual(self.request("POST", "/v1/events", body)[0], 200)
+        self.assertEqual(self.request("GET", "/v1/session-events?sessionId=session-1", token="wrong")[0], 401)
+        self.assertEqual(self.request("GET", "/v1/session-events")[0], 400)
+        self.assertEqual(self.request("GET", "/v1/session-events?sessionId=missing")[0], 404)
+        status, result = self.request("GET", "/v1/session-events?sessionId=session-1")
+        self.assertEqual(status, 200)
+        self.assertEqual([item["sequence"] for item in result["events"]], [0, 1])
+
     def test_conflict_rolls_back_batch(self):
         body = (json.dumps(event(1, "event-1")) + "\n" +
                 json.dumps(event(1, "different-id")) + "\n").encode()
