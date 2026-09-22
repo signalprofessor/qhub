@@ -166,8 +166,15 @@ function drawHeight(events, terrain = [], demAvailable = false, verticalFilter =
       Math.max(1, differences.length - 1);
     comparison = ` · EKF ground − DEM: ${mean.toFixed(1)} ± ${Math.sqrt(variance).toFixed(1)} m`;
   }
+  const rejected = verticalFilter?.rejectedMeasurements || {};
+  const gateSummary = verticalFilter
+    ? ` · 3σ rejected: ${rejected.gnss || 0} GNSS, ${rejected.pressure || 0} pressure`
+    : "";
+  const datumSummary = Number.isFinite(verticalFilter?.gnssDatumOffsetMeters)
+    ? ` · GNSS datum correction ${verticalFilter.gnssDatumOffsetMeters.toFixed(1)} m`
+    : "";
   ui.heightStatus.textContent = `${gnss.length} GNSS heights · ${baro.length} pressure samples · ${kf.length} EKF estimates · ` +
-    (demAvailable ? `${dem.length} GNSS fixes inside DEM tile` : "DEM cache not prepared") + comparison;
+    (demAvailable ? `${dem.length} GNSS fixes inside DEM tile` : "DEM cache not prepared") + comparison + datumSummary + gateSummary;
 }
 
 function showLatest(event, summary) {

@@ -93,6 +93,8 @@ class BackendHttpTest(unittest.TestCase):
         status, result = self.request("GET", path)
         self.assertEqual(status, 200)
         self.assertEqual(result["groundClearanceMeters"], 0.4)
+        self.assertEqual(result["gnssDatumOffsetMeters"], 32.5)
+        self.assertIn("rejectedMeasurements", result)
         self.assertGreaterEqual(len(result["estimates"]), 1)
         self.assertEqual(result["parameters"]["gnssFallbackStdMeters"], 20.0)
 

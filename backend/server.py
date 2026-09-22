@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from backend.terrain import CACHE_NAME, sampled_session
+from backend.terrain import CACHE_NAME, GNSS_DATUM_OFFSET_METRES, sampled_session
 from backend.vertical_filter import filter_session, parameters as vertical_filter_parameters
 
 MAX_BODY_BYTES = 1_000_000
@@ -247,13 +247,21 @@ def make_handler(db_path, token):
                 elif not events:
                     self.respond(404, {"error": "session not found"})
                 else:
-                    estimates = filter_session(events)
+                    estimates = filter_session(events, GNSS_DATUM_OFFSET_METRES)
                     if not estimates:
                         self.respond(422, {"error": "session needs GNSS altitude and pressure"})
                     else:
+                        rejected = {kind: sum(item["measurementType"] == kind and not item["measurementAccepted"]
+                                              for item in estimates) for kind in ("gnss", "pressure")}
+                        accepted = {kind: sum(item["measurementType"] == kind and item["measurementAccepted"]
+                                              for item in estimates) for kind in ("gnss", "pressure")}
                         self.respond(200, {"estimates": estimates,
                                            "parameters": vertical_filter_parameters(),
-                                           "groundClearanceMeters": 0.4})
+                                           "gnssDatumOffsetMeters": GNSS_DATUM_OFFSET_METRES,
+                                           "datumOffsetSource": "calibrated from 2026-09-22 drive for DEM tile 6472500_535000",
+                                           "groundClearanceMeters": 0.4,
+                                           "acceptedMeasurements": accepted,
+                                           "rejectedMeasurements": rejected})
             elif path == "/v1/session-terrain":
                 if not self.authorized():
                     return

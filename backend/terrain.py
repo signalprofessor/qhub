@@ -11,6 +11,8 @@ WEST, EAST = 535000.0, 537500.0
 SOUTH, NORTH = 6470000.0, 6472500.0
 SIZE = 2500
 CACHE_NAME = "6472500_535000.f32"
+# Calibrated from the 2026-09-22 drive; replace with a geoid model when available.
+GNSS_DATUM_OFFSET_METRES = 32.5
 
 
 def sweref99(latitude, longitude):
