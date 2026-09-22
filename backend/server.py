@@ -140,7 +140,7 @@ def make_handler(db_path, token):
 
         def authorized(self):
             provided = self.headers.get("Authorization", "")
-            if not hmac.compare_digest(provided, f"Bearer {token}"):
+            if not hmac.compare_digest(provided.encode("utf-8"), f"Bearer {token}".encode("utf-8")):
                 self.respond(401, {"error": "unauthorized"})
                 return False
             return True

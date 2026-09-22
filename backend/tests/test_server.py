@@ -50,6 +50,7 @@ class BackendHttpTest(unittest.TestCase):
     def test_health_and_auth(self):
         self.assertEqual(self.request("GET", "/health")[0], 200)
         self.assertEqual(self.request("GET", "/v1/sessions", token="wrong")[0], 401)
+        self.assertEqual(self.request("GET", "/v1/sessions", token="tökén")[0], 401)
 
     def test_ingest_retry_and_summary(self):
         body = (json.dumps(event()) + "\n" + json.dumps(event(1, "event-1")) + "\n").encode()
