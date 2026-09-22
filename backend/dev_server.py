@@ -13,7 +13,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
-    token = secrets.token_urlsafe(32)
+    token = secrets.token_hex(8)  # 16 easy-to-type characters, for localhost trials only
     initialize(DATABASE)
     server = ThreadingHTTPServer(("127.0.0.1", args.port), make_handler(DATABASE, token))
     print(f"Qhub local backend running on Mac port {args.port}", flush=True)
