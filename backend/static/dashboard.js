@@ -216,7 +216,7 @@ function renderMap() {
   if (topographyEnabled && topographyUrl) {
     ui.map.append(svgElement("image", {href: topographyUrl, x: x(demTile.west), y: y(demTile.north),
       width: 2500 / view.metresPerPixel, height: 2500 / view.metresPerPixel,
-      preserveAspectRatio: "none", opacity: mapEnabled ? 0.75 : 1}));
+      preserveAspectRatio: "none", opacity: 1}));
   }
   const grid = svgElement("g", {stroke: "#66848a", "stroke-opacity": mapEnabled ? 0.22 : 0.14});
   for (let i = 1; i < 5; i++) {
@@ -266,7 +266,7 @@ async function loadTopography() {
     ui.mapStatus.textContent = "Connect with the backend token before loading local topography.";
     return false;
   }
-  const response = await fetch("/topography.png", {
+  const response = await fetch("/contours.png", {
     headers: {Authorization: "Bearer " + token}, cache: "no-store",
   });
   if (!response.ok) {

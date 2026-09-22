@@ -187,7 +187,7 @@ def make_handler(db_path, token):
         def serve_topography(self):
             if not self.authorized():
                 return
-            image_path = Path(db_path).parent / "hillshade.png"
+            image_path = Path(db_path).parent / "contours.png"
             if not image_path.is_file():
                 self.respond(404, {"error": "topography not generated"})
                 return
@@ -212,7 +212,7 @@ def make_handler(db_path, token):
             path = request.path
             if path in STATIC_FILES:
                 self.serve_static(path)
-            elif path == "/topography.png":
+            elif path == "/contours.png":
                 self.serve_topography()
             elif path == "/health":
                 self.respond(200, {"status": "ok"})

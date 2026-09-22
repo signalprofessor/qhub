@@ -80,12 +80,12 @@ class BackendHttpTest(unittest.TestCase):
         connection.close()
 
     def test_topography_requires_token_and_is_not_public(self):
-        self.assertEqual(self.request("GET", "/topography.png", token="wrong")[0], 401)
-        self.assertEqual(self.request("GET", "/topography.png")[0], 404)
-        image_path = Path(self.tmp.name) / "hillshade.png"
+        self.assertEqual(self.request("GET", "/contours.png", token="wrong")[0], 401)
+        self.assertEqual(self.request("GET", "/contours.png")[0], 404)
+        image_path = Path(self.tmp.name) / "contours.png"
         image_path.write_bytes(b"\x89PNG\r\n\x1a\nlocal test")
         connection = http.client.HTTPConnection("127.0.0.1", self.httpd.server_port)
-        connection.request("GET", "/topography.png", headers={"Authorization": "Bearer test-token"})
+        connection.request("GET", "/contours.png", headers={"Authorization": "Bearer test-token"})
         response = connection.getresponse()
         self.assertEqual(response.status, 200)
         self.assertEqual(response.getheader("Content-Type"), "image/png")
