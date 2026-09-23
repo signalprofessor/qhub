@@ -11,7 +11,9 @@ from backend.terrain import EAST, NORTH, SIZE, SOUTH, WEST, sample_height, swere
 PARTICLE_COUNT = 1000
 INITIAL_POSITION_STD_METRES = 3.0
 INITIAL_SPEED_STD_METRES_PER_SECOND = 1.0
-SPEED_RW_STD_METRES_PER_SECOND_PER_SQRT_SECOND = 0.8
+INITIAL_ACCELERATION_BIAS_STD_METRES_PER_SECOND2 = 0.15
+ACCELERATION_BIAS_RW_STD_METRES_PER_SECOND2_PER_SQRT_SECOND = 0.003
+SPEED_RW_STD_METRES_PER_SECOND_PER_SQRT_SECOND = 0.3
 TERRAIN_HEIGHT_STD_METRES = 1.5
 RESAMPLE_ESS_FRACTION = 0.5
 GYRO_BIAS_CALIBRATION_SECONDS = 5.0
@@ -141,10 +143,11 @@ def run_gyro_accel_particle_filter(events, vertical_estimates, cache_path, groun
     rng = random.Random(RANDOM_SEED)
     particles = [(first_east + rng.gauss(0, INITIAL_POSITION_STD_METRES),
                   first_north + rng.gauss(0, INITIAL_POSITION_STD_METRES),
-                  initial_speed + rng.gauss(0, INITIAL_SPEED_STD_METRES_PER_SECOND))
+                  initial_speed + rng.gauss(0, INITIAL_SPEED_STD_METRES_PER_SECOND),
+                  rng.gauss(0, INITIAL_ACCELERATION_BIAS_STD_METRES_PER_SECOND2))
                  for _ in range(particle_count)]
     weights = [1 / particle_count] * particle_count
-    initial_particles = [[round(e, 1), round(n, 1)] for e, n, _ in particles]
+    initial_particles = [[round(e, 1), round(n, 1)] for e, n, _, _ in particles]
     frames, cumulative = [], []
     previous_millis = first["timestamp"]["utcEpochMillis"]
     previous_heading = math.radians(initial_heading)
@@ -179,25 +182,26 @@ def run_gyro_accel_particle_filter(events, vertical_estimates, cache_path, groun
             if index:
                 speed_std = SPEED_RW_STD_METRES_PER_SECOND_PER_SQRT_SECOND * math.sqrt(dt)
                 updated = []
-                for east, north, speed in particles:
-                    new_speed = speed + delta_speed + rng.gauss(0, speed_std)
+                for east, north, speed, acceleration_bias in particles:
+                    new_bias = acceleration_bias + rng.gauss(0, ACCELERATION_BIAS_RW_STD_METRES_PER_SECOND2_PER_SQRT_SECOND * math.sqrt(dt))
+                    new_speed = speed + delta_speed - .5*(acceleration_bias+new_bias)*dt + rng.gauss(0, speed_std)
                     de = .5 * (speed*math.sin(previous_heading) + new_speed*math.sin(heading)) * dt
                     dn = .5 * (speed*math.cos(previous_heading) + new_speed*math.cos(heading)) * dt
-                    updated.append((east+de, north+dn, new_speed))
+                    updated.append((east+de, north+dn, new_speed, new_bias))
                 particles = updated
             previous_heading = heading
             observed_ground = height_by_sequence[event["sequence"]] - ground_clearance_metres
             logs = []
-            for (east, north, _), prior in zip(particles, weights):
+            for (east, north, _, _), prior in zip(particles, weights):
                 terrain = sample_height(data, east, north)
                 likelihood = -80.0 if terrain is None else -.5*((observed_ground-terrain)/TERRAIN_HEIGHT_STD_METRES)**2
                 logs.append(math.log(max(prior, 1e-300)) + likelihood)
             maximum = max(logs); weights = [math.exp(value-maximum) for value in logs]; total = sum(weights)
             weights = [value/total for value in weights] if total > 0 else [1/particle_count]*particle_count
-            mean_e = sum(p[0]*w for p,w in zip(particles, weights)); mean_n = sum(p[1]*w for p,w in zip(particles, weights)); mean_s = sum(p[2]*w for p,w in zip(particles, weights))
-            map_index = max(range(particle_count), key=weights.__getitem__); map_e, map_n, _ = particles[map_index]
+            mean_e = sum(p[0]*w for p,w in zip(particles, weights)); mean_n = sum(p[1]*w for p,w in zip(particles, weights)); mean_s = sum(p[2]*w for p,w in zip(particles, weights)); mean_b = sum(p[3]*w for p,w in zip(particles, weights))
+            map_index = max(range(particle_count), key=weights.__getitem__); map_e, map_n, _, _ = particles[map_index]
             ess = 1/sum(w*w for w in weights); max_weight=max(weights); resampled=ess<particle_count*RESAMPLE_ESS_FRACTION
-            frames.append({"utcEpochMillis":millis,"sequence":event["sequence"],"trueEast":round(true_east,2),"trueNorth":round(true_north,2),"meanEast":round(mean_e,2),"meanNorth":round(mean_n,2),"mapEast":round(map_e,2),"mapNorth":round(map_n,2),"meanSpeedMetersPerSecond":round(mean_s,2),"gyroHeadingDegrees":round(math.degrees(heading)%360,2),"mmseErrorMeters":round(math.hypot(mean_e-true_east,mean_n-true_north),2),"mapErrorMeters":round(math.hypot(map_e-true_east,map_n-true_north),2),"drStartEast":round(dr_east,2),"drStartNorth":round(dr_north,2),"drStartErrorMeters":round(math.hypot(dr_east-true_east,dr_north-true_north),2),"dr30East":round(dr30_east,2),"dr30North":round(dr30_north,2),"dr30ErrorMeters":round(math.hypot(dr30_east-true_east,dr30_north-true_north),2),"dr30HorizonSeconds":round((millis-anchor_millis)/1000,2),"effectiveParticleCount":round(ess,1),"resampled":resampled,"particles":[[round(e,1),round(n,1),round(w/max_weight,4),round(s,2)] for (e,n,s),w in zip(particles,weights)]})
+            frames.append({"utcEpochMillis":millis,"sequence":event["sequence"],"trueEast":round(true_east,2),"trueNorth":round(true_north,2),"meanEast":round(mean_e,2),"meanNorth":round(mean_n,2),"mapEast":round(map_e,2),"mapNorth":round(map_n,2),"meanSpeedMetersPerSecond":round(mean_s,2),"minSpeedMetersPerSecond":round(min(p[2] for p in particles),2),"maxSpeedMetersPerSecond":round(max(p[2] for p in particles),2),"meanAccelerationBiasMetersPerSecond2":round(mean_b,4),"gyroHeadingDegrees":round(math.degrees(heading)%360,2),"mmseErrorMeters":round(math.hypot(mean_e-true_east,mean_n-true_north),2),"mapErrorMeters":round(math.hypot(map_e-true_east,map_n-true_north),2),"drStartEast":round(dr_east,2),"drStartNorth":round(dr_north,2),"drStartErrorMeters":round(math.hypot(dr_east-true_east,dr_north-true_north),2),"dr30East":round(dr30_east,2),"dr30North":round(dr30_north,2),"dr30ErrorMeters":round(math.hypot(dr30_east-true_east,dr30_north-true_north),2),"dr30HorizonSeconds":round((millis-anchor_millis)/1000,2),"effectiveParticleCount":round(ess,1),"resampled":resampled,"particles":[[round(e,1),round(n,1),round(w/max_weight,4),round(s,2)] for (e,n,s,b),w in zip(particles,weights)]})
             if resampled:
                 particles = _systematic_resample(particles, weights, rng); weights=[1/particle_count]*particle_count
     if frames: frames[0]["initialParticles"] = initial_particles
@@ -207,6 +211,8 @@ def run_gyro_accel_particle_filter(events, vertical_estimates, cache_path, groun
 def parameters():
     return {"particleCount":PARTICLE_COUNT,"initialPositionStdMeters":INITIAL_POSITION_STD_METRES,
             "initialSpeedStdMetersPerSecond":INITIAL_SPEED_STD_METRES_PER_SECOND,
+            "initialAccelerationBiasStdMetersPerSecond2":INITIAL_ACCELERATION_BIAS_STD_METRES_PER_SECOND2,
+            "accelerationBiasRandomWalkStdMetersPerSecond2PerSqrtSecond":ACCELERATION_BIAS_RW_STD_METRES_PER_SECOND2_PER_SQRT_SECOND,
             "speedRandomWalkStdMetersPerSecondPerSqrtSecond":SPEED_RW_STD_METRES_PER_SECOND_PER_SQRT_SECOND,
             "terrainHeightStdMeters":TERRAIN_HEIGHT_STD_METRES,"gyroBiasCalibrationSeconds":GYRO_BIAS_CALIBRATION_SECONDS,
             "crabAngleDegrees":0.0,"crabAngleStdDegrees":0.0,"crabAngleProcessStdDegrees":0.0,"forwardAxis":"negativeBodyY","resampleEssFraction":RESAMPLE_ESS_FRACTION,"randomSeed":RANDOM_SEED}

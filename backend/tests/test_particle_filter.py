@@ -105,3 +105,6 @@ class ParticleFilterTest(unittest.TestCase):
         self.assertEqual(len(replay), 3)
         self.assertEqual(len(replay[0]["particles"]), 100)
         self.assertEqual(replay[0]["gyroHeadingDegrees"], 0.0)
+        self.assertIn("meanAccelerationBiasMetersPerSecond2", replay[-1])
+        self.assertLessEqual(replay[-1]["minSpeedMetersPerSecond"], replay[-1]["meanSpeedMetersPerSecond"])
+        self.assertGreaterEqual(replay[-1]["maxSpeedMetersPerSecond"], replay[-1]["meanSpeedMetersPerSecond"])
