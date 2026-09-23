@@ -111,7 +111,7 @@ def _longitudinal_velocity_trace(events):
 
 def run_gyro_accel_particle_filter(events, vertical_estimates, cache_path, ground_clearance_metres=0.8,
                              particle_count=PARTICLE_COUNT):
-    height_by_sequence = {item["sequence"]: item["heightMeters"] for item in vertical_estimates}
+    height_by_sequence = {item["sequence"]: (item["heightMeters"], item.get("heightStdMeters", 0.0)) for item in vertical_estimates}
     times, yaw = _gyro_trace(events)
     acceleration_times, cumulative_speed = _longitudinal_velocity_trace(events)
     if not times or not acceleration_times:
@@ -190,18 +190,20 @@ def run_gyro_accel_particle_filter(events, vertical_estimates, cache_path, groun
                     updated.append((east+de, north+dn, new_speed, new_bias))
                 particles = updated
             previous_heading = heading
-            observed_ground = height_by_sequence[event["sequence"]] - ground_clearance_metres
+            height_estimate, height_std = height_by_sequence[event["sequence"]]
+            observed_ground = height_estimate - ground_clearance_metres
+            likelihood_std = math.hypot(TERRAIN_HEIGHT_STD_METRES, height_std)
             logs = []
             for (east, north, _, _), prior in zip(particles, weights):
                 terrain = sample_height(data, east, north)
-                likelihood = -80.0 if terrain is None else -.5*((observed_ground-terrain)/TERRAIN_HEIGHT_STD_METRES)**2
+                likelihood = -80.0 if terrain is None else -.5*((observed_ground-terrain)/likelihood_std)**2
                 logs.append(math.log(max(prior, 1e-300)) + likelihood)
             maximum = max(logs); weights = [math.exp(value-maximum) for value in logs]; total = sum(weights)
             weights = [value/total for value in weights] if total > 0 else [1/particle_count]*particle_count
             mean_e = sum(p[0]*w for p,w in zip(particles, weights)); mean_n = sum(p[1]*w for p,w in zip(particles, weights)); mean_s = sum(p[2]*w for p,w in zip(particles, weights)); mean_b = sum(p[3]*w for p,w in zip(particles, weights))
             map_index = max(range(particle_count), key=weights.__getitem__); map_e, map_n, _, _ = particles[map_index]
             ess = 1/sum(w*w for w in weights); max_weight=max(weights); resampled=ess<particle_count*RESAMPLE_ESS_FRACTION
-            frames.append({"utcEpochMillis":millis,"sequence":event["sequence"],"trueEast":round(true_east,2),"trueNorth":round(true_north,2),"meanEast":round(mean_e,2),"meanNorth":round(mean_n,2),"mapEast":round(map_e,2),"mapNorth":round(map_n,2),"meanSpeedMetersPerSecond":round(mean_s,2),"minSpeedMetersPerSecond":round(min(p[2] for p in particles),2),"maxSpeedMetersPerSecond":round(max(p[2] for p in particles),2),"meanAccelerationBiasMetersPerSecond2":round(mean_b,4),"gyroHeadingDegrees":round(math.degrees(heading)%360,2),"mmseErrorMeters":round(math.hypot(mean_e-true_east,mean_n-true_north),2),"mapErrorMeters":round(math.hypot(map_e-true_east,map_n-true_north),2),"drStartEast":round(dr_east,2),"drStartNorth":round(dr_north,2),"drStartErrorMeters":round(math.hypot(dr_east-true_east,dr_north-true_north),2),"dr30East":round(dr30_east,2),"dr30North":round(dr30_north,2),"dr30ErrorMeters":round(math.hypot(dr30_east-true_east,dr30_north-true_north),2),"dr30HorizonSeconds":round((millis-anchor_millis)/1000,2),"effectiveParticleCount":round(ess,1),"resampled":resampled,"particles":[[round(e,1),round(n,1),round(w/max_weight,4),round(s,2)] for (e,n,s,b),w in zip(particles,weights)]})
+            frames.append({"utcEpochMillis":millis,"sequence":event["sequence"],"trueEast":round(true_east,2),"trueNorth":round(true_north,2),"meanEast":round(mean_e,2),"meanNorth":round(mean_n,2),"mapEast":round(map_e,2),"mapNorth":round(map_n,2),"meanSpeedMetersPerSecond":round(mean_s,2),"minSpeedMetersPerSecond":round(min(p[2] for p in particles),2),"maxSpeedMetersPerSecond":round(max(p[2] for p in particles),2),"meanAccelerationBiasMetersPerSecond2":round(mean_b,4),"terrainLikelihoodStdMeters":round(likelihood_std,3),"gyroHeadingDegrees":round(math.degrees(heading)%360,2),"mmseErrorMeters":round(math.hypot(mean_e-true_east,mean_n-true_north),2),"mapErrorMeters":round(math.hypot(map_e-true_east,map_n-true_north),2),"drStartEast":round(dr_east,2),"drStartNorth":round(dr_north,2),"drStartErrorMeters":round(math.hypot(dr_east-true_east,dr_north-true_north),2),"dr30East":round(dr30_east,2),"dr30North":round(dr30_north,2),"dr30ErrorMeters":round(math.hypot(dr30_east-true_east,dr30_north-true_north),2),"dr30HorizonSeconds":round((millis-anchor_millis)/1000,2),"effectiveParticleCount":round(ess,1),"resampled":resampled,"particles":[[round(e,1),round(n,1),round(w/max_weight,4),round(s,2)] for (e,n,s,b),w in zip(particles,weights)]})
             if resampled:
                 particles = _systematic_resample(particles, weights, rng); weights=[1/particle_count]*particle_count
     if frames: frames[0]["initialParticles"] = initial_particles

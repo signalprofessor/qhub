@@ -266,6 +266,7 @@ function drawParticleFrame() {
     ` · DR-start ${frame.drStartErrorMeters.toFixed(1)} m · DR-${frame.dr30HorizonSeconds.toFixed(0)}s ${frame.dr30ErrorMeters.toFixed(1)} m` +
     (Number.isFinite(frame.meanSpeedMetersPerSecond) ? " · speed " + frame.meanSpeedMetersPerSecond.toFixed(1) + " [" + frame.minSpeedMetersPerSecond.toFixed(1) + ", " + frame.maxSpeedMetersPerSecond.toFixed(1) + "] m/s" : "") +
     (Number.isFinite(frame.meanAccelerationBiasMetersPerSecond2) ? " · acc bias " + frame.meanAccelerationBiasMetersPerSecond2.toFixed(3) + " m/s²" : "") +
+    (Number.isFinite(frame.terrainLikelihoodStdMeters) ? " · height σ " + frame.terrainLikelihoodStdMeters.toFixed(2) + " m" : "") +
     ` · ESS ${frame.effectiveParticleCount.toFixed(0)}/${particleReplay.parameters.particleCount} · ${frame.resampled ? "resampled" : "no resampling"}`;
   ui.particleFrame.value = String(particleFrameIndex);
 }
