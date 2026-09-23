@@ -42,7 +42,7 @@ def _velocity_components(payload):
     return speed * math.sin(heading), speed * math.cos(heading)
 
 
-def run_particle_filter(events, vertical_estimates, cache_path, particle_count=PARTICLE_COUNT):
+def run_particle_filter(events, vertical_estimates, cache_path, ground_clearance_metres=0.4, particle_count=PARTICLE_COUNT):
     gnss = []
     for event in events:
         if event.get("eventType") != "navigation.gnss":
@@ -103,7 +103,7 @@ def run_particle_filter(events, vertical_estimates, cache_path, particle_count=P
                 particles = [(east + de + rng.gauss(0, process_std),
                               north + dn + rng.gauss(0, process_std))
                              for east, north in particles]
-            observed_ground = height_by_sequence[event["sequence"]] - 0.4
+            observed_ground = height_by_sequence[event["sequence"]] - ground_clearance_metres
             log_weights = []
             for (east, north), prior_weight in zip(particles, weights):
                 terrain = sample_height(data, east, north)

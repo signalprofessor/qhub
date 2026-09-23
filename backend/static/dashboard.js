@@ -18,6 +18,8 @@ const ui = {
   particleStatus: document.getElementById("particle-status"),
   particlePlay: document.getElementById("particle-play"),
   particleSpeed: document.getElementById("particle-speed"),
+  particleModel: document.getElementById("particle-model"),
+  groundClearance: document.getElementById("ground-clearance"),
   particleFrame: document.getElementById("particle-frame"),
   count: document.getElementById("event-count"),
   sequence: document.getElementById("sequence"),
@@ -262,6 +264,7 @@ function drawParticleFrame() {
   const elapsed = (frame.utcEpochMillis - frames[0].utcEpochMillis) / 1000;
   ui.particleStatus.textContent = `t ${elapsed.toFixed(0)} s · MMSE ${frame.mmseErrorMeters.toFixed(1)} m · MAP ${frame.mapErrorMeters.toFixed(1)} m` +
     ` · DR-start ${frame.drStartErrorMeters.toFixed(1)} m · DR-${frame.dr30HorizonSeconds.toFixed(0)}s ${frame.dr30ErrorMeters.toFixed(1)} m` +
+    (Number.isFinite(frame.meanSpeedMetersPerSecond) ? ` · speed ${frame.meanSpeedMetersPerSecond.toFixed(1)} m/s` : "") +
     ` · ESS ${frame.effectiveParticleCount.toFixed(0)}/${particleReplay.parameters.particleCount} · ${frame.resampled ? "resampled" : "no resampling"}`;
   ui.particleFrame.value = String(particleFrameIndex);
 }
@@ -524,14 +527,18 @@ async function refresh() {
       }
       let verticalFilter = null;
       try {
-        verticalFilter = await api("/v1/session-vertical-filter?sessionId=" + encodeURIComponent(selectedSession));
+        verticalFilter = await api("/v1/session-vertical-filter?sessionId=" + encodeURIComponent(selectedSession) +
+          "&groundClearanceMeters=" + encodeURIComponent(ui.groundClearance.value));
       } catch (error) {
         if (!String(error.message).includes("HTTP 422")) throw error;
       }
       drawHeight(history.events, terrain?.heights || [], terrain !== null, verticalFilter);
       ui.particleStatus.textContent = "Calculating 1,000-particle replay…";
       try {
-        const replay = await api("/v1/session-particle-filter?sessionId=" + encodeURIComponent(selectedSession));
+        const query = "?sessionId=" + encodeURIComponent(selectedSession) +
+          "&model=" + encodeURIComponent(ui.particleModel.value) +
+          "&groundClearanceMeters=" + encodeURIComponent(ui.groundClearance.value);
+        const replay = await api("/v1/session-particle-filter" + query);
         setParticleReplay(replay);
       } catch (error) {
         setParticleReplay(null);
@@ -593,6 +600,13 @@ ui.particleSpeed.addEventListener("change", () => {
   clearTimeout(particleTimer);
   particleTimer = setTimeout(scheduleParticleFrame, 0);
 });
+function reloadParticleModel() {
+  stopParticleReplay();
+  historySession = "";
+  refresh();
+}
+ui.particleModel.addEventListener("change", reloadParticleModel);
+ui.groundClearance.addEventListener("change", reloadParticleModel);
 
 ui.mapToggle.addEventListener("click", () => {
   mapEnabled = !mapEnabled;

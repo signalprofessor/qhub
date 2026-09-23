@@ -8,9 +8,10 @@ import math
 SEA_LEVEL_PRESSURE_HPA = 1013.25
 SCALE_HEIGHT_METRES = 8434.5
 GNSS_FALLBACK_STD_METRES = 20.0
-PRESSURE_STD_HPA = 0.05
+PRESSURE_STD_HPA = 0.024
 ACCELERATION_STD_METRES_PER_SECOND2 = 0.25
-BIAS_RW_STD_HPA_PER_SQRT_HOUR = 1.0
+BIAS_RW_STD_HPA_PER_SQRT_HOUR = 0.1
+GNSS_MIN_STD_METRES = 10.0
 INNOVATION_GATE_SIGMA = 3.0
 INITIAL_HEIGHT_STD_METRES = 20.0
 INITIAL_VERTICAL_SPEED_STD_METRES_PER_SECOND = 2.0
@@ -93,7 +94,7 @@ def filter_session(events, gnss_datum_offset_metres=0.0):
                 measurement_type = "gnss"
                 accuracy = payload.get("verticalAccuracyMeters")
                 sigma = float(accuracy) if type(accuracy) in (int, float) and math.isfinite(accuracy) else GNSS_FALLBACK_STD_METRES
-                sigma = min(100.0, max(3.0, sigma))
+                sigma = min(100.0, max(GNSS_MIN_STD_METRES, sigma))
                 x, p, accepted, normalized_innovation = _scalar_update(
                     x, p, latest_height - x[0], [1.0, 0.0, 0.0], sigma ** 2)
             elif kind == "navigation.pressure" and latest_pressure is not None:
@@ -116,6 +117,7 @@ def filter_session(events, gnss_datum_offset_metres=0.0):
 
 def parameters():
     return {"gnssFallbackStdMeters": GNSS_FALLBACK_STD_METRES,
+            "gnssMinimumStdMeters": GNSS_MIN_STD_METRES,
             "pressureStdHectopascals": PRESSURE_STD_HPA,
             "accelerationStdMetersPerSecond2": ACCELERATION_STD_METRES_PER_SECOND2,
             "biasRandomWalkStdHectopascalsPerSqrtHour": BIAS_RW_STD_HPA_PER_SQRT_HOUR,

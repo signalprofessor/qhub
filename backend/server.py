@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlsplit
 from backend.terrain import CACHE_NAME, GNSS_DATUM_OFFSET_METRES, sampled_session
 from backend.vertical_filter import filter_session, parameters as vertical_filter_parameters
 from backend.particle_filter import run_particle_filter, parameters as particle_filter_parameters
+from backend.gyro_particle_filter import run_gyro_particle_filter, parameters as gyro_particle_filter_parameters
 
 MAX_BODY_BYTES = 1_000_000
 MAX_EVENTS = 1_000
@@ -238,9 +239,22 @@ def make_handler(db_path, token):
             elif path == "/v1/session-particle-filter":
                 if not self.authorized():
                     return
-                ids = parse_qs(request.query, keep_blank_values=True).get("sessionId", [])
+                query = parse_qs(request.query, keep_blank_values=True)
+                ids = query.get("sessionId", [])
+                models = query.get("model", ["gnss_velocity"])
+                clearances = query.get("groundClearanceMeters", ["0.4"])
                 if len(ids) != 1 or not ids[0] or len(ids[0]) > 200:
                     self.respond(400, {"error": "one sessionId is required"})
+                    return
+                if len(models) != 1 or models[0] not in ("gnss_velocity", "gyro_speed"):
+                    self.respond(400, {"error": "unknown particle-filter model"})
+                    return
+                try:
+                    ground_clearance = float(clearances[0])
+                    if len(clearances) != 1 or not 0 <= ground_clearance <= 10:
+                        raise ValueError
+                except (TypeError, ValueError):
+                    self.respond(400, {"error": "groundClearanceMeters must be between 0 and 10"})
                     return
                 cache_path = Path(db_path).parent / CACHE_NAME
                 if not cache_path.is_file():
@@ -254,18 +268,35 @@ def make_handler(db_path, token):
                 else:
                     vertical = filter_session(events, GNSS_DATUM_OFFSET_METRES)
                     try:
-                        frames = run_particle_filter(events, vertical, cache_path)
+                        if models[0] == "gyro_speed":
+                            frames = run_gyro_particle_filter(events, vertical, cache_path, ground_clearance)
+                            parameters = gyro_particle_filter_parameters()
+                            note = "GNSS supplies the known initial state and evaluation truth only; raw gyro and a particle speed state drive propagation"
+                        else:
+                            frames = run_particle_filter(events, vertical, cache_path, ground_clearance)
+                            parameters = particle_filter_parameters()
+                            note = "GNSS position initializes and evaluates; GNSS speed and bearing drive propagation"
                     except (OSError, ValueError):
                         self.respond(500, {"error": "local DEM cache invalid"})
+                        return
                     if not frames:
-                        self.respond(422, {"error": "session has no usable GNSS fixes inside DEM tile"})
+                        self.respond(422, {"error": "session lacks data required by this model inside the DEM tile"})
                     else:
-                        self.respond(200, {"frames": frames, "parameters": particle_filter_parameters(),
-                                           "note": "GNSS position initializes and evaluates only; speed and bearing drive propagation"})
+                        self.respond(200, {"frames": frames, "parameters": parameters,
+                                           "model": models[0], "groundClearanceMeters": ground_clearance,
+                                           "note": note})
             elif path == "/v1/session-vertical-filter":
                 if not self.authorized():
                     return
-                ids = parse_qs(request.query, keep_blank_values=True).get("sessionId", [])
+                query = parse_qs(request.query, keep_blank_values=True)
+                ids = query.get("sessionId", [])
+                try:
+                    ground_clearance = float(query.get("groundClearanceMeters", ["0.4"])[0])
+                    if not 0 <= ground_clearance <= 10:
+                        raise ValueError
+                except (TypeError, ValueError):
+                    self.respond(400, {"error": "groundClearanceMeters must be between 0 and 10"})
+                    return
                 if len(ids) != 1 or not ids[0] or len(ids[0]) > 200:
                     self.respond(400, {"error": "one sessionId is required"})
                     return
@@ -287,7 +318,7 @@ def make_handler(db_path, token):
                                            "parameters": vertical_filter_parameters(),
                                            "gnssDatumOffsetMeters": GNSS_DATUM_OFFSET_METRES,
                                            "datumOffsetSource": "calibrated from 2026-09-22 drive for DEM tile 6472500_535000",
-                                           "groundClearanceMeters": 0.4,
+                                           "groundClearanceMeters": ground_clearance,
                                            "acceptedMeasurements": accepted,
                                            "rejectedMeasurements": rejected})
             elif path == "/v1/session-terrain":

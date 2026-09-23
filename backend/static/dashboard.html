@@ -67,8 +67,8 @@
       </div>
       <p id="height-status" class="freshness">Connect to load height measurements.</p>
       <svg id="height-chart" class="height-chart" viewBox="0 0 900 300" role="img" aria-label="GNSS altitude and GNSS-anchored barometric altitude versus time"></svg>
-      <div class="height-legend"><span class="height-gnss">GNSS altitude</span><span class="height-pressure">Barometric estimate</span><span class="height-kf">EKF ground estimate (datum-corrected height − 0.4 m)</span><span class="height-dem">DEM terrain height</span></div>
-      <p class="map-note">The barometric curve uses the first GNSS altitude as its offset and the first pressure sample as its reference. The EKF curve estimates phone height from GNSS and pressure after applying the DEM tile’s calibrated GNSS datum offset, then subtracts the fixed 0.4 m phone-to-ground distance. DEM terrain height is sampled from the local 1 m GeoTIFF only inside its 2.5 km footprint. GNSS altitude and DEM height may use different vertical reference frames, so do not interpret their difference as verified phone height above ground.</p>
+      <div class="height-legend"><span class="height-gnss">GNSS altitude</span><span class="height-pressure">Barometric estimate</span><span class="height-kf">EKF ground estimate (datum-corrected height − sensor height)</span><span class="height-dem">DEM terrain height</span></div>
+      <p class="map-note">The barometric curve uses the first GNSS altitude as its offset and the first pressure sample as its reference. The EKF curve estimates phone height from GNSS and pressure after applying the DEM tile’s calibrated GNSS datum offset, then subtracts the sensor-to-ground distance entered beside the PF controls. DEM terrain height is sampled from the local 1 m GeoTIFF only inside its 2.5 km footprint. GNSS altitude and DEM height may use different vertical reference frames, so do not interpret their difference as verified phone height above ground.</p>
     </section>
 
     <section class="panel particle-panel" aria-labelledby="particle-title">
@@ -78,8 +78,12 @@
           <h2 id="particle-title">Particle-filter replay</h2>
         </div>
         <div class="particle-controls">
+          <label for="particle-model">Model</label>
+          <select id="particle-model"><option value="gyro_speed" selected>Gyro + speed state</option><option value="gnss_velocity">Legacy GNSS velocity</option></select>
+          <label for="ground-clearance">Sensor height</label>
+          <input id="ground-clearance" type="number" min="0" max="10" step="0.1" value="0.8" aria-label="Sensor height above ground in metres">
           <button id="particle-play" type="button" disabled>Play</button>
-          <label for="particle-speed">Speed</label>
+          <label for="particle-speed">Replay</label>
           <select id="particle-speed"><option value="1">1×</option><option value="5">5×</option><option value="10" selected>10×</option><option value="20">20×</option></select>
         </div>
       </div>
@@ -87,7 +91,7 @@
       <canvas id="particle-canvas" class="particle-canvas" width="800" height="800" role="img" aria-label="Animated particle cloud, PF estimate, and GNSS reference inside the DEM tile"></canvas>
       <input id="particle-frame" class="particle-frame" type="range" min="0" max="0" value="0" disabled aria-label="Particle filter replay time">
       <div class="particle-legend"><span class="particle-initial">Initial cloud</span><span class="particle-current">Weighted particles</span><span class="particle-estimate">MMSE mean</span><span class="particle-map">MAP particle</span><span class="particle-dr">DR from start</span><span class="particle-dr30">30 s DR</span><span class="particle-truth">GNSS reference</span></div>
-      <p class="map-note">All 1,000 particles are rendered over the local topographic contours; opacity represents relative posterior weight. The untouched initial cloud remains visible in gray. GNSS position initializes the cloud and is shown only as evaluation truth; it does not update particle weights. GNSS speed and bearing drive the PF, open-loop dead reckoning from the start, and rolling dead reckoning re-anchored to GNSS 30 seconds earlier. All three use the same trapezoidal integration of east/north velocity components.</p>
+      <p class="map-note">Choose the legacy GNSS-velocity reference or the new simulated-outage model. The gyro model uses GNSS only for the known initial position, speed, and direction and thereafter uses quaternion-integrated raw gyro, a particle speed state, barometric height, and terrain. GNSS positions remain visible only as evaluation truth.</p>
     </section>
 
     <section class="panel map-panel" aria-labelledby="map-title">
