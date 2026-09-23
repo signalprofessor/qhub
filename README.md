@@ -52,3 +52,5 @@ Use Android Studio's bundled JDK and an installed Android SDK:
 ```
 
 Rotation-vector events (`navigation.rotation_vector`) store the Android fused sensor quaternion components `x`, `y`, `z`, optional `w`, optional heading accuracy in radians, sensor accuracy, and elapsed-realtime sensor timestamp at about 1 Hz. Values use Android device coordinates; no phone-to-vehicle mounting alignment or magnetic/true-north correction is assumed.
+
+Raw IMU events (`navigation.imu_batch`) preserve approximately one second of samples per event. The app requests 100 Hz for the accelerometer, uncalibrated gyroscope, and uncalibrated magnetometer, falling back to calibrated gyro or magnetometer only when necessary. Every sample retains its own Android elapsed-realtime timestamp, XYZ values, optional Android-reported bias, and accuracy status; actual sample rate must be derived from timestamps. The app does not integrate attitude or discard raw samples. Quaternion integration and gyro-bias experiments are deterministic replay products in the backend.

@@ -13,6 +13,9 @@ import com.signalprofessor.qhub.log.NdjsonEventWriter
 import com.signalprofessor.qhub.navigation.GNSS_EVENT_TYPE
 import com.signalprofessor.qhub.navigation.GnssLocationSource
 import com.signalprofessor.qhub.navigation.GnssSample
+import com.signalprofessor.qhub.navigation.IMU_BATCH_EVENT_TYPE
+import com.signalprofessor.qhub.navigation.ImuBatch
+import com.signalprofessor.qhub.navigation.ImuBatchSource
 import com.signalprofessor.qhub.navigation.PRESSURE_EVENT_TYPE
 import com.signalprofessor.qhub.navigation.PressureSample
 import com.signalprofessor.qhub.navigation.PressureSensorSource
@@ -42,6 +45,8 @@ class MissionRecorder(
     private var locationSource: GnssLocationSource? = null
     private var pressureSource: PressureSensorSource? = null
     private var rotationSource: RotationVectorSource? = null
+    private var imuSource: ImuBatchSource? = null
+    private var imuStatus: String? = null
     private var pressureAvailable: Boolean? = null
     private var latestGnssEvent: EventEnvelope? = null
     private var latestPressureEvent: EventEnvelope? = null
@@ -63,6 +68,7 @@ class MissionRecorder(
         val pendingSource = GnssLocationSource(appContext, ::recordSample)
         val pendingPressureSource = PressureSensorSource(appContext, ::recordPressure)
         val pendingRotationSource = RotationVectorSource(appContext, ::recordRotation)
+        val pendingImuSource = ImuBatchSource(appContext, ::recordImuBatch)
 
         writer = pendingWriter
         factory = EventFactory(deviceId, sessionId, AndroidQhubClock)
@@ -72,6 +78,7 @@ class MissionRecorder(
         latestGnssEvent = null
         latestPressureEvent = null
         pressureAvailable = null
+        imuStatus = null
         startedAtUtcMillis = System.currentTimeMillis()
         currentFile = file
 
@@ -85,6 +92,13 @@ class MissionRecorder(
         pressureAvailable = pendingPressureSource.start() == PressureSensorSource.StartResult.Started
         if (pressureAvailable == true) pressureSource = pendingPressureSource
         if (pendingRotationSource.start() == RotationVectorSource.StartResult.Started) rotationSource = pendingRotationSource
+        imuStatus = when (pendingImuSource.start()) {
+            ImuBatchSource.StartResult.Started -> pendingImuSource.sensorNames.joinToString(" + ")
+            ImuBatchSource.StartResult.Unavailable -> "unavailable"
+            ImuBatchSource.StartResult.RegistrationFailed -> "registration failed"
+            ImuBatchSource.StartResult.AlreadyRunning -> "already running"
+        }
+        if (imuStatus != "unavailable" && imuStatus != "registration failed") imuSource = pendingImuSource
         publishRecordingState(null)
         return result
     }
@@ -93,6 +107,7 @@ class MissionRecorder(
         locationSource?.stop()
         pressureSource?.stop()
         rotationSource?.stop()
+        imuSource?.stop()
         writer?.close()
         val completedFile = currentFile
         if (completedFile != null) {
@@ -252,11 +267,27 @@ class MissionRecorder(
         publishRecordingState(event)
     }
 
+    private fun recordImuBatch(batch: ImuBatch) {
+        val event = factory?.create(
+            source = NAVIGATION_CAPABILITY_ID,
+            eventType = IMU_BATCH_EVENT_TYPE,
+            payload = batch.toEventPayload(),
+        ) ?: return
+        writer?.append(event)
+        eventCount += 1
+        lastRecordedEvent = event
+        onRecordedEvent(event)
+        publishRecordingState(event)
+    }
+
     private fun publishRecordingState(event: EventEnvelope?) {
         onState(
             MissionState(
-                status = if (pressureAvailable == true) "Recording GNSS + barometer"
-                    else "Recording GNSS (barometer unavailable)",
+                status = buildString {
+                    append(if (pressureAvailable == true) "Recording GNSS + barometer"
+                        else "Recording GNSS (barometer unavailable)")
+                    imuStatus?.let { append(" + IMU [").append(it).append("]") }
+                },
                 eventCount = eventCount,
                 fileSizeBytes = writer?.sizeBytes() ?: 0,
                 elapsedMillis = (System.currentTimeMillis() - startedAtUtcMillis).coerceAtLeast(0),
@@ -285,6 +316,8 @@ class MissionRecorder(
         locationSource = null
         pressureSource = null
         rotationSource = null
+        imuSource = null
+        imuStatus = null
         writer = null
         factory = null
         currentFile = null

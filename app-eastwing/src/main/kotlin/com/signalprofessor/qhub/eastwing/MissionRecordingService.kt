@@ -107,7 +107,7 @@ class MissionRecordingService : Service() {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentTitle("EastWing mission recording")
-            .setContentText("GNSS and pressure · tap to open")
+            .setContentText("GNSS, pressure, and raw IMU · tap to open")
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(
