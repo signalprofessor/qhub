@@ -97,5 +97,7 @@ footer { margin-top: 22px; color: #7b8e90; font-size: 12px; }
 .particle-current::before { background: #3478bf; }
 .particle-estimate::before { background: #c43b4d; }
 .particle-map::before { background: #e07e26; transform: rotate(45deg); border-radius: 1px !important; }
+.particle-dr::before { background: #2a3437; border-radius: 1px !important; }
+.particle-dr30::before { background: #229bb4; border-radius: 1px !important; }
 .particle-truth::before { background: #167258; }
 @media (max-width: 760px) { .particle-panel { padding: 20px; } .particle-controls { flex-wrap: wrap; } }

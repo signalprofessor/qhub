@@ -33,6 +33,15 @@ def _systematic_resample(particles, weights, rng):
     return result
 
 
+def _velocity_components(payload):
+    speed = payload.get("speedMetersPerSecond")
+    bearing = payload.get("bearingDegrees")
+    speed = float(speed) if type(speed) in (int, float) and math.isfinite(speed) else 0.0
+    bearing = float(bearing) if type(bearing) in (int, float) and math.isfinite(bearing) else 0.0
+    heading = math.radians(bearing)
+    return speed * math.sin(heading), speed * math.cos(heading)
+
+
 def run_particle_filter(events, vertical_estimates, cache_path, particle_count=PARTICLE_COUNT):
     gnss = []
     for event in events:
@@ -58,6 +67,9 @@ def run_particle_filter(events, vertical_estimates, cache_path, particle_count=P
     initial_particles = [[round(east, 1), round(north, 1)] for east, north in particles]
     frames = []
     previous_millis = first["timestamp"]["utcEpochMillis"]
+    previous_velocity = _velocity_components(first["payload"])
+    cumulative_displacements = []
+    cumulative_east = cumulative_north = 0.0
     cache_path = Path(cache_path)
     if cache_path.stat().st_size != SIZE * SIZE * 4:
         raise ValueError("DEM cache has unexpected size")
@@ -67,13 +79,25 @@ def run_particle_filter(events, vertical_estimates, cache_path, particle_count=P
             millis = event["timestamp"]["utcEpochMillis"]
             dt = max(0.0, min(5.0, (millis - previous_millis) / 1000)) if index else 0.0
             previous_millis = millis
-            speed = payload.get("speedMetersPerSecond")
-            bearing = payload.get("bearingDegrees")
-            speed = float(speed) if type(speed) in (int, float) and math.isfinite(speed) else 0.0
-            bearing = float(bearing) if type(bearing) in (int, float) and math.isfinite(bearing) else 0.0
-            heading = math.radians(bearing)
-            de = speed * dt * math.sin(heading)
-            dn = speed * dt * math.cos(heading)
+            current_velocity = _velocity_components(payload)
+            de = 0.5 * (previous_velocity[0] + current_velocity[0]) * dt
+            dn = 0.5 * (previous_velocity[1] + current_velocity[1]) * dt
+            previous_velocity = current_velocity
+            cumulative_east += de
+            cumulative_north += dn
+            cumulative_displacements.append((millis, cumulative_east, cumulative_north, true_east, true_north))
+            dr_start_east = first_east + cumulative_east
+            dr_start_north = first_north + cumulative_north
+            target_millis = millis - 30_000
+            anchor_index = 0
+            for candidate in range(len(cumulative_displacements)):
+                if cumulative_displacements[candidate][0] <= target_millis:
+                    anchor_index = candidate
+                else:
+                    break
+            anchor_millis, anchor_de, anchor_dn, anchor_east, anchor_north = cumulative_displacements[anchor_index]
+            dr30_east = anchor_east + cumulative_east - anchor_de
+            dr30_north = anchor_north + cumulative_north - anchor_dn
             process_std = POSITION_RW_STD_METRES_PER_SQRT_SECOND * math.sqrt(dt)
             if index:
                 particles = [(east + de + rng.gauss(0, process_std),
@@ -105,6 +129,11 @@ def run_particle_filter(events, vertical_estimates, cache_path, particle_count=P
                 "mapEast": round(map_east, 2), "mapNorth": round(map_north, 2),
                 "mmseErrorMeters": round(math.hypot(mean_east - true_east, mean_north - true_north), 2),
                 "mapErrorMeters": round(math.hypot(map_east - true_east, map_north - true_north), 2),
+                "drStartEast": round(dr_start_east, 2), "drStartNorth": round(dr_start_north, 2),
+                "drStartErrorMeters": round(math.hypot(dr_start_east - true_east, dr_start_north - true_north), 2),
+                "dr30East": round(dr30_east, 2), "dr30North": round(dr30_north, 2),
+                "dr30ErrorMeters": round(math.hypot(dr30_east - true_east, dr30_north - true_north), 2),
+                "dr30HorizonSeconds": round((millis - anchor_millis) / 1000, 2),
                 "effectiveParticleCount": round(ess, 1), "resampled": resampled,
                 "particles": [[round(east, 1), round(north, 1), round(weight / maximum_weight, 4)]
                               for (east, north), weight in zip(particles, weights)],

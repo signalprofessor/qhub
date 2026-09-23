@@ -86,8 +86,8 @@
       <p id="particle-status" class="freshness">Connect to calculate the first particle-filter replay.</p>
       <canvas id="particle-canvas" class="particle-canvas" width="800" height="800" role="img" aria-label="Animated particle cloud, PF estimate, and GNSS reference inside the DEM tile"></canvas>
       <input id="particle-frame" class="particle-frame" type="range" min="0" max="0" value="0" disabled aria-label="Particle filter replay time">
-      <div class="particle-legend"><span class="particle-initial">Initial cloud</span><span class="particle-current">Weighted particles</span><span class="particle-estimate">MMSE mean</span><span class="particle-map">MAP particle</span><span class="particle-truth">GNSS reference</span></div>
-      <p class="map-note">All 1,000 particles are rendered over the local topographic contours; opacity represents relative posterior weight. The untouched initial cloud remains visible in gray. GNSS position initializes the cloud and is shown only as evaluation truth; it does not update particle weights. GNSS speed and bearing intentionally drive this first motion model.</p>
+      <div class="particle-legend"><span class="particle-initial">Initial cloud</span><span class="particle-current">Weighted particles</span><span class="particle-estimate">MMSE mean</span><span class="particle-map">MAP particle</span><span class="particle-dr">DR from start</span><span class="particle-dr30">30 s DR</span><span class="particle-truth">GNSS reference</span></div>
+      <p class="map-note">All 1,000 particles are rendered over the local topographic contours; opacity represents relative posterior weight. The untouched initial cloud remains visible in gray. GNSS position initializes the cloud and is shown only as evaluation truth; it does not update particle weights. GNSS speed and bearing drive the PF, open-loop dead reckoning from the start, and rolling dead reckoning re-anchored to GNSS 30 seconds earlier. All three use the same trapezoidal integration of east/north velocity components.</p>
     </section>
 
     <section class="panel map-panel" aria-labelledby="map-title">

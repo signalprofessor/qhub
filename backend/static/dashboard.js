@@ -214,7 +214,7 @@ function drawParticleFrame() {
   if (!particleReplay?.frames?.length) return;
   const frames = particleReplay.frames;
   const frame = frames[particleFrameIndex];
-  function trail(keyEast, keyNorth, color) {
+  function trail(keyEast, keyNorth, color, dash = []) {
     context.beginPath();
     for (let i = 0; i <= particleFrameIndex; i++) {
       const point = particlePoint(frames[i][keyEast], frames[i][keyNorth]);
@@ -222,9 +222,13 @@ function drawParticleFrame() {
     }
     context.strokeStyle = color;
     context.lineWidth = 2;
+    context.setLineDash(dash);
     context.stroke();
+    context.setLineDash([]);
   }
   trail("trueEast", "trueNorth", "rgba(22,114,88,.7)");
+  trail("drStartEast", "drStartNorth", "rgba(42,52,55,.7)", [8,5]);
+  trail("dr30East", "dr30North", "rgba(34,155,180,.8)", [3,4]);
   trail("meanEast", "meanNorth", "rgba(196,59,77,.75)");
   trail("mapEast", "mapNorth", "rgba(224,126,38,.68)");
   context.fillStyle = "rgba(90,110,110,.13)";
@@ -240,6 +244,8 @@ function drawParticleFrame() {
   }
   const estimate = particlePoint(frame.meanEast, frame.meanNorth);
   const mapEstimate = particlePoint(frame.mapEast, frame.mapNorth);
+  const deadReckoning = particlePoint(frame.drStartEast, frame.drStartNorth);
+  const deadReckoning30 = particlePoint(frame.dr30East, frame.dr30North);
   const truth = particlePoint(frame.trueEast, frame.trueNorth);
   context.fillStyle = "#c43b4d";
   context.beginPath(); context.arc(estimate.x, estimate.y, 6, 0, Math.PI * 2); context.fill();
@@ -248,11 +254,14 @@ function drawParticleFrame() {
   context.beginPath(); context.moveTo(mapEstimate.x, mapEstimate.y - 7); context.lineTo(mapEstimate.x + 7, mapEstimate.y);
   context.lineTo(mapEstimate.x, mapEstimate.y + 7); context.lineTo(mapEstimate.x - 7, mapEstimate.y); context.closePath(); context.fill();
   context.strokeStyle = "#ffffff"; context.lineWidth = 2; context.stroke();
+  context.fillStyle = "#2a3437"; context.fillRect(deadReckoning.x - 4, deadReckoning.y - 4, 8, 8);
+  context.fillStyle = "#229bb4"; context.fillRect(deadReckoning30.x - 4, deadReckoning30.y - 4, 8, 8);
   context.strokeStyle = "#167258"; context.lineWidth = 3;
   context.beginPath(); context.moveTo(truth.x - 7, truth.y); context.lineTo(truth.x + 7, truth.y);
   context.moveTo(truth.x, truth.y - 7); context.lineTo(truth.x, truth.y + 7); context.stroke();
   const elapsed = (frame.utcEpochMillis - frames[0].utcEpochMillis) / 1000;
-  ui.particleStatus.textContent = `t ${elapsed.toFixed(0)} s · MMSE error ${frame.mmseErrorMeters.toFixed(1)} m · MAP error ${frame.mapErrorMeters.toFixed(1)} m` +
+  ui.particleStatus.textContent = `t ${elapsed.toFixed(0)} s · MMSE ${frame.mmseErrorMeters.toFixed(1)} m · MAP ${frame.mapErrorMeters.toFixed(1)} m` +
+    ` · DR-start ${frame.drStartErrorMeters.toFixed(1)} m · DR-${frame.dr30HorizonSeconds.toFixed(0)}s ${frame.dr30ErrorMeters.toFixed(1)} m` +
     ` · ESS ${frame.effectiveParticleCount.toFixed(0)}/${particleReplay.parameters.particleCount} · ${frame.resampled ? "resampled" : "no resampling"}`;
   ui.particleFrame.value = String(particleFrameIndex);
 }

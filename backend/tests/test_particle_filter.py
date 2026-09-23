@@ -30,3 +30,6 @@ class ParticleFilterTest(unittest.TestCase):
         self.assertTrue(all(len(frame["particles"]) == 100 for frame in first))
         self.assertTrue(all(frame["effectiveParticleCount"] == 100 for frame in first))
         self.assertTrue(all(not frame["resampled"] for frame in first))
+        self.assertTrue(all(frame["drStartErrorMeters"] == 0 for frame in first))
+        self.assertTrue(all(frame["dr30ErrorMeters"] == 0 for frame in first))
+        self.assertTrue(all("mapErrorMeters" in frame and "mmseErrorMeters" in frame for frame in first))
