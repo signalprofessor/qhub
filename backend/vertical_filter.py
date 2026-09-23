@@ -12,6 +12,9 @@ PRESSURE_STD_HPA = 0.05
 ACCELERATION_STD_METRES_PER_SECOND2 = 0.25
 BIAS_RW_STD_HPA_PER_SQRT_HOUR = 1.0
 INNOVATION_GATE_SIGMA = 3.0
+INITIAL_HEIGHT_STD_METRES = 20.0
+INITIAL_VERTICAL_SPEED_STD_METRES_PER_SECOND = 2.0
+INITIAL_BIAS_STD_HPA = 3.0
 
 
 def pressure_model(height):
@@ -78,7 +81,9 @@ def filter_session(events, gnss_datum_offset_metres=0.0):
             if latest_height is None or latest_pressure is None:
                 continue
             x = [latest_height, 0.0, latest_pressure - pressure_model(latest_height)]
-            p = [[400.0, 0.0, 0.0], [0.0, 4.0, 0.0], [0.0, 0.0, 9.0]]
+            p = [[INITIAL_HEIGHT_STD_METRES ** 2, 0.0, 0.0],
+                 [0.0, INITIAL_VERTICAL_SPEED_STD_METRES_PER_SECOND ** 2, 0.0],
+                 [0.0, 0.0, INITIAL_BIAS_STD_HPA ** 2]]
             previous_nanos = nanos
         else:
             dt = max(0.0, min(10.0, (nanos - previous_nanos) / 1_000_000_000))
@@ -116,4 +121,7 @@ def parameters():
             "biasRandomWalkStdHectopascalsPerSqrtHour": BIAS_RW_STD_HPA_PER_SQRT_HOUR,
             "seaLevelPressureHectopascals": SEA_LEVEL_PRESSURE_HPA,
             "scaleHeightMeters": SCALE_HEIGHT_METRES,
-            "innovationGateSigma": INNOVATION_GATE_SIGMA}
+            "innovationGateSigma": INNOVATION_GATE_SIGMA,
+            "initialHeightStdMeters": INITIAL_HEIGHT_STD_METRES,
+            "initialVerticalSpeedStdMetersPerSecond": INITIAL_VERTICAL_SPEED_STD_METRES_PER_SECOND,
+            "initialBiasStdHectopascals": INITIAL_BIAS_STD_HPA}
