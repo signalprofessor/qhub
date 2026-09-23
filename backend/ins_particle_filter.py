@@ -14,8 +14,8 @@ TERRAIN_HEIGHT_STD_METRES = 1.5
 RESAMPLE_ESS_FRACTION = 0.5
 CALIBRATION_SECONDS = 5.0
 GRAVITY_METRES_PER_SECOND2 = 9.80665
-TILT_CORRECTION_GAIN_PER_SECOND = 0.5
-TILT_ACCELERATION_GATE_METRES_PER_SECOND2 = 1.0
+TILT_CORRECTION_GAIN_PER_SECOND = 5.0
+TILT_ACCELERATION_GATE_METRES_PER_SECOND2 = 0.10
 TILT_CORRECTION_MAX_TURN_RATE_RADIANS_PER_SECOND = 0.03
 RANDOM_SEED = 6472500535002
 
@@ -75,10 +75,10 @@ def _imu_delta_velocity(events, initial_heading):
             a=[first[i]-(first[i+3] or 0)-bias[i-1] for i in (1,2,3)];b=[second[i]-(second[i+3] or 0)-bias[i-1] for i in (1,2,3)]
             omega=[(x+y)/2 for x,y in zip(a,b)]
             measured=(sample[1],sample[2],sample[3]); measured_norm=math.sqrt(_dot(measured,measured))
+            measured_up=tuple(x/measured_norm for x in measured)
+            predicted_up=_rotate((q[0],-q[1],-q[2],-q[3]),(0.0,0.0,1.0))
             if (math.sqrt(_dot(omega,omega)) <= TILT_CORRECTION_MAX_TURN_RATE_RADIANS_PER_SECOND and
                     abs(measured_norm-GRAVITY_METRES_PER_SECOND2) <= TILT_ACCELERATION_GATE_METRES_PER_SECOND2):
-                measured_up=tuple(x/measured_norm for x in measured)
-                predicted_up=_rotate((q[0],-q[1],-q[2],-q[3]),(0.0,0.0,1.0))
                 correction=_cross(measured_up,predicted_up)
                 omega=[value+TILT_CORRECTION_GAIN_PER_SECOND*error for value,error in zip(omega,correction)]
             q=_mul(q,_increment(omega,dt));norm=math.sqrt(_dot(q,q));q=tuple(x/norm for x in q);gi+=1;previous_gyro=second
@@ -145,4 +145,4 @@ def run_ins_particle_filter(events, vertical_estimates, cache_path, ground_clear
     return frames
 
 
-def parameters():return {"particleCount":PARTICLE_COUNT,"linearState":["velocityEast","velocityNorth"],"deltaVelocityStdMetersPerSecond":DELTA_V_STD_METRES_PER_SECOND,"positionModelStdMeters":POSITION_MODEL_STD_METRES,"terrainHeightStdMeters":TERRAIN_HEIGHT_STD_METRES,"calibrationSeconds":CALIBRATION_SECONDS,"tiltCorrectionGainPerSecond":TILT_CORRECTION_GAIN_PER_SECOND,"tiltCorrectionMaxTurnRateRadiansPerSecond":TILT_CORRECTION_MAX_TURN_RATE_RADIANS_PER_SECOND,"randomSeed":RANDOM_SEED}
+def parameters():return {"particleCount":PARTICLE_COUNT,"linearState":["velocityEast","velocityNorth"],"deltaVelocityStdMetersPerSecond":DELTA_V_STD_METRES_PER_SECOND,"positionModelStdMeters":POSITION_MODEL_STD_METRES,"terrainHeightStdMeters":TERRAIN_HEIGHT_STD_METRES,"calibrationSeconds":CALIBRATION_SECONDS,"tiltCorrectionGainPerSecond":TILT_CORRECTION_GAIN_PER_SECOND,"gravityNormToleranceMetersPerSecond2":TILT_ACCELERATION_GATE_METRES_PER_SECOND2,"tiltCorrectionMaxTurnRateRadiansPerSecond":TILT_CORRECTION_MAX_TURN_RATE_RADIANS_PER_SECOND,"randomSeed":RANDOM_SEED}
