@@ -104,3 +104,5 @@ Particle state is `[E, N, speed]`. Speed follows a non-negative random walk, pos
 ## INS plus 2-D velocity MPF
 
 The third dashboard model keeps particles only for horizontal position `[E, N]`. Each particle carries a diagonal Gaussian conditional state `[vE, vN]`, propagated and analytically conditioned during position sampling. Raw gyro and accelerometer data are preintegrated at sensor rate. Initial roll/pitch comes from the stationary gravity direction, initial yaw from the known pre-outage state, and a magnetic-free low-bandwidth gravity correction stabilizes roll/pitch without vehicle-specific velocity constraints. Both horizontal body accelerations contribute symmetrically after rotation into SWEREF-aligned east/north axes. The independent vertical EKF supplies the terrain-height observation.
+
+The AHRS gravity feedback is disabled above 0.03 rad/s measured turn rate. This prevents centripetal acceleration during a turn from being interpreted as a gravity-direction error and removed from the horizontal INS input.
