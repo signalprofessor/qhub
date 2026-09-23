@@ -79,7 +79,7 @@
         </div>
         <div class="particle-controls">
           <label for="particle-model">Model</label>
-          <select id="particle-model"><option value="ins_velocity" selected>INS + 2D velocity (MPF)</option><option value="gyro_speed">Gyro + speed state</option><option value="gnss_velocity">Legacy GNSS velocity</option></select>
+          <select id="particle-model"><option value="gyro_accel_zero_crab" selected>Gyro + acceleration, crab 0°</option><option value="ins_velocity">INS + 2D velocity (MPF)</option><option value="gyro_speed">Gyro + speed state</option><option value="gnss_velocity">Legacy GNSS velocity</option></select>
           <label for="ground-clearance">Sensor height</label>
           <input id="ground-clearance" type="number" min="0" max="10" step="0.1" value="0.8" aria-label="Sensor height above ground in metres">
           <button id="particle-play" type="button" disabled>Play</button>
@@ -91,7 +91,7 @@
       <canvas id="particle-canvas" class="particle-canvas" width="800" height="800" role="img" aria-label="Animated particle cloud, PF estimate, and GNSS reference inside the DEM tile"></canvas>
       <input id="particle-frame" class="particle-frame" type="range" min="0" max="0" value="0" disabled aria-label="Particle filter replay time">
       <div class="particle-legend"><span class="particle-initial">Initial cloud</span><span class="particle-current">Weighted particles</span><span class="particle-estimate">MMSE mean</span><span class="particle-map">MAP particle</span><span class="particle-dr">DR from start</span><span class="particle-dr30">30 s DR</span><span class="particle-truth">GNSS reference</span></div>
-      <p class="map-note">Choose the legacy reference, gyro-speed PF, or experimental INS velocity MPF. The gyro model uses GNSS only for the known initial position, speed, and direction and thereafter uses quaternion-integrated raw gyro, a particle speed state, barometric height, and terrain. GNSS positions remain visible only as evaluation truth.</p>
+      <p class="map-note">Choose the zero-crab gyro-acceleration model, experimental INS velocity MPF, gyro-speed PF, or legacy reference. The gyro model uses GNSS only for the known initial position, speed, and direction and thereafter uses quaternion-integrated raw gyro, a particle speed state, barometric height, and terrain. GNSS positions remain visible only as evaluation truth.</p>
     </section>
 
     <section class="panel map-panel" aria-labelledby="map-title">

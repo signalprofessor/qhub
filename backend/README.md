@@ -108,3 +108,8 @@ The third dashboard model keeps particles only for horizontal position `[E, N]`.
 The AHRS gravity feedback is disabled above 0.03 rad/s measured turn rate. This prevents centripetal acceleration during a turn from being interpreted as a gravity-direction error and removed from the horizontal INS input.
 
 Strict gravity aiding now requires `abs(norm(accelerometer) - g) < 0.1 m/s²` as well as turn rate below 0.03 rad/s. Accepted constant-speed/stationary updates use a 5 s⁻¹ tilt-correction gain; there is no absolute attitude-innovation gate that can permanently lock out recovery after drift.
+
+
+### Zero-crab gyro-acceleration model
+
+The dashboard also offers a car-development model with crab angle fixed deterministically to 0 degrees (zero initial uncertainty and zero process noise). Quaternion-integrated raw gyro supplies heading. The signed speed state is initialized once from GNSS and thereafter driven by the calibrated Android accelerometer y-channel; because the phone forward direction is negative body Y, positive sensor Y corresponds to positive vehicle acceleration. GNSS remains evaluation truth only. This model deliberately exposes longitudinal accelerometer bias as the next estimation problem rather than allowing velocity direction to drift away from the accurately measured gyro heading.
