@@ -14,6 +14,11 @@ const ui = {
   pressure: document.getElementById("pressure"),
   heightChart: document.getElementById("height-chart"),
   heightStatus: document.getElementById("height-status"),
+  particleCanvas: document.getElementById("particle-canvas"),
+  particleStatus: document.getElementById("particle-status"),
+  particlePlay: document.getElementById("particle-play"),
+  particleSpeed: document.getElementById("particle-speed"),
+  particleFrame: document.getElementById("particle-frame"),
   count: document.getElementById("event-count"),
   sequence: document.getElementById("sequence"),
   time: document.getElementById("event-time"),
@@ -44,6 +49,9 @@ let mapEnabled = false;
 let topographyEnabled = false;
 let topographyUrl = "";
 let dragStart = null;
+let particleReplay = null;
+let particleFrameIndex = 0;
+let particleTimer = null;
 
 function status(message, kind = "") {
   ui.status.textContent = message;
@@ -175,6 +183,94 @@ function drawHeight(events, terrain = [], demAvailable = false, verticalFilter =
     : "";
   ui.heightStatus.textContent = `${gnss.length} GNSS heights · ${baro.length} pressure samples · ${kf.length} EKF estimates · ` +
     (demAvailable ? `${dem.length} GNSS fixes inside DEM tile` : "DEM cache not prepared") + comparison + datumSummary + gateSummary;
+}
+
+function stopParticleReplay() {
+  if (particleTimer) clearTimeout(particleTimer);
+  particleTimer = null;
+  ui.particlePlay.textContent = "Play";
+}
+
+function particlePoint(east, north) {
+  const padding = 32;
+  const span = 800 - 2 * padding;
+  return {
+    x: padding + (east - demTile.west) / (demTile.east - demTile.west) * span,
+    y: padding + (demTile.north - north) / (demTile.north - demTile.south) * span,
+  };
+}
+
+function drawParticleFrame() {
+  const canvas = ui.particleCanvas;
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#f8fbfa";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "#6e9c82";
+  context.lineWidth = 2;
+  context.strokeRect(32, 32, 736, 736);
+  if (!particleReplay?.frames?.length) return;
+  const frames = particleReplay.frames;
+  const frame = frames[particleFrameIndex];
+  function trail(keyEast, keyNorth, color) {
+    context.beginPath();
+    for (let i = 0; i <= particleFrameIndex; i++) {
+      const point = particlePoint(frames[i][keyEast], frames[i][keyNorth]);
+      if (i) context.lineTo(point.x, point.y); else context.moveTo(point.x, point.y);
+    }
+    context.strokeStyle = color;
+    context.lineWidth = 2;
+    context.stroke();
+  }
+  trail("trueEast", "trueNorth", "rgba(22,114,88,.7)");
+  trail("meanEast", "meanNorth", "rgba(196,59,77,.75)");
+  context.fillStyle = "rgba(90,110,110,.13)";
+  for (const particle of (frames[0].initialParticles || frames[0].particles)) {
+    const point = particlePoint(particle[0], particle[1]);
+    context.fillRect(point.x - 1, point.y - 1, 2, 2);
+  }
+  const colors = ["#3478bf","#31a4a0","#32a678","#8cab3f","#e1a136","#df7537","#cb4c62","#945ab5"];
+  for (const particle of frame.particles) {
+    const point = particlePoint(particle[0], particle[1]);
+    context.fillStyle = colors[particle[2] % colors.length] + "b8";
+    context.fillRect(point.x - 1.5, point.y - 1.5, 3, 3);
+  }
+  const estimate = particlePoint(frame.meanEast, frame.meanNorth);
+  const truth = particlePoint(frame.trueEast, frame.trueNorth);
+  context.fillStyle = "#c43b4d";
+  context.beginPath(); context.arc(estimate.x, estimate.y, 6, 0, Math.PI * 2); context.fill();
+  context.strokeStyle = "#ffffff"; context.lineWidth = 2; context.stroke();
+  context.strokeStyle = "#167258"; context.lineWidth = 3;
+  context.beginPath(); context.moveTo(truth.x - 7, truth.y); context.lineTo(truth.x + 7, truth.y);
+  context.moveTo(truth.x, truth.y - 7); context.lineTo(truth.x, truth.y + 7); context.stroke();
+  const elapsed = (frame.utcEpochMillis - frames[0].utcEpochMillis) / 1000;
+  ui.particleStatus.textContent = `t ${elapsed.toFixed(0)} s · error ${frame.positionErrorMeters.toFixed(1)} m · ESS ${frame.effectiveParticleCount.toFixed(0)}/${particleReplay.parameters.particleCount}` +
+    ` · ${frame.survivingLineageGroups}/8 initial sectors · ${frame.resampled ? "resampled" : "no resampling"}`;
+  ui.particleFrame.value = String(particleFrameIndex);
+}
+
+function scheduleParticleFrame() {
+  if (!particleTimer || !particleReplay) return;
+  if (particleFrameIndex >= particleReplay.frames.length - 1) {
+    stopParticleReplay();
+    return;
+  }
+  particleFrameIndex++;
+  drawParticleFrame();
+  const speed = Number(ui.particleSpeed.value) || 10;
+  particleTimer = setTimeout(scheduleParticleFrame, 1000 / speed);
+}
+
+function setParticleReplay(data) {
+  stopParticleReplay();
+  particleReplay = data;
+  particleFrameIndex = 0;
+  const count = data?.frames?.length || 0;
+  ui.particleFrame.max = String(Math.max(0, count - 1));
+  ui.particleFrame.value = "0";
+  ui.particleFrame.disabled = !count;
+  ui.particlePlay.disabled = !count;
+  drawParticleFrame();
 }
 
 function showLatest(event, summary) {
@@ -408,6 +504,16 @@ async function refresh() {
         if (!String(error.message).includes("HTTP 422")) throw error;
       }
       drawHeight(history.events, terrain?.heights || [], terrain !== null, verticalFilter);
+      ui.particleStatus.textContent = "Calculating 1,000-particle replay…";
+      try {
+        const replay = await api("/v1/session-particle-filter?sessionId=" + encodeURIComponent(selectedSession));
+        setParticleReplay(replay);
+      } catch (error) {
+        setParticleReplay(null);
+        ui.particleStatus.textContent = String(error.message).includes("HTTP 422")
+          ? "This session has no usable GNSS fixes inside the DEM tile."
+          : "Particle replay unavailable: " + error.message;
+      }
       historySession = selectedSession;
       historySequence = summary.lastSequence;
     }
@@ -443,6 +549,24 @@ ui.token.addEventListener("keydown", event => {
 ui.session.addEventListener("change", () => {
   selectedSession = ui.session.value;
   refresh();
+});
+
+ui.particlePlay.addEventListener("click", () => {
+  if (particleTimer) { stopParticleReplay(); return; }
+  if (!particleReplay?.frames?.length) return;
+  if (particleFrameIndex >= particleReplay.frames.length - 1) particleFrameIndex = 0;
+  ui.particlePlay.textContent = "Pause";
+  particleTimer = setTimeout(scheduleParticleFrame, 0);
+});
+ui.particleFrame.addEventListener("input", () => {
+  stopParticleReplay();
+  particleFrameIndex = Number(ui.particleFrame.value);
+  drawParticleFrame();
+});
+ui.particleSpeed.addEventListener("change", () => {
+  if (!particleTimer) return;
+  clearTimeout(particleTimer);
+  particleTimer = setTimeout(scheduleParticleFrame, 0);
 });
 
 ui.mapToggle.addEventListener("click", () => {

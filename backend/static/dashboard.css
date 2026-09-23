@@ -82,3 +82,19 @@ footer { margin-top: 22px; color: #7b8e90; font-size: 12px; }
 .height-legend .height-kf::before { border-color: #c43b4d; }
 .height-legend .height-dem::before { border-color: #7a4c9b; }
 @media (max-width: 760px) { .height-panel { padding: 20px; } .height-chart { min-height: 180px; } }
+
+.particle-panel { margin-top: 18px; padding: 28px; }
+.particle-controls { display: flex; align-items: center; gap: 8px; }
+.particle-controls label { margin: 0 2px 0 8px; }
+.particle-controls select { width: auto; padding: 8px 10px; }
+.particle-controls button { padding: 9px 18px; }
+.particle-controls button:disabled { cursor: default; opacity: .5; }
+.particle-canvas { display: block; width: min(100%, 800px); height: auto; margin: 0 auto; border: 1px solid #dce7e7; border-radius: 12px; background: #f8fbfa; }
+.particle-frame { width: 100%; margin-top: 13px; accent-color: #136e64; }
+.particle-legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 10px; color: #486366; font-size: 13px; }
+.particle-legend span::before { content: ""; display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px; margin-right: 7px; }
+.particle-initial::before { background: #a9b6b5; opacity: .45; }
+.particle-current::before { background: linear-gradient(90deg,#3478bf,#32a678,#e1a136,#cb4c62); }
+.particle-estimate::before { background: #c43b4d; }
+.particle-truth::before { background: #167258; }
+@media (max-width: 760px) { .particle-panel { padding: 20px; } .particle-controls { flex-wrap: wrap; } }

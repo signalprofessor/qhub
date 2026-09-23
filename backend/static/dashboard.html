@@ -71,6 +71,25 @@
       <p class="map-note">The barometric curve uses the first GNSS altitude as its offset and the first pressure sample as its reference. The EKF curve estimates phone height from GNSS and pressure after applying the DEM tile’s calibrated GNSS datum offset, then subtracts the fixed 0.4 m phone-to-ground distance. DEM terrain height is sampled from the local 1 m GeoTIFF only inside its 2.5 km footprint. GNSS altitude and DEM height may use different vertical reference frames, so do not interpret their difference as verified phone height above ground.</p>
     </section>
 
+    <section class="panel particle-panel" aria-labelledby="particle-title">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">TERRAIN NAVIGATION / STEP 1</p>
+          <h2 id="particle-title">Particle-filter replay</h2>
+        </div>
+        <div class="particle-controls">
+          <button id="particle-play" type="button" disabled>Play</button>
+          <label for="particle-speed">Speed</label>
+          <select id="particle-speed"><option value="1">1×</option><option value="5">5×</option><option value="10" selected>10×</option><option value="20">20×</option></select>
+        </div>
+      </div>
+      <p id="particle-status" class="freshness">Connect to calculate the first particle-filter replay.</p>
+      <canvas id="particle-canvas" class="particle-canvas" width="800" height="800" role="img" aria-label="Animated particle cloud, PF estimate, and GNSS reference inside the DEM tile"></canvas>
+      <input id="particle-frame" class="particle-frame" type="range" min="0" max="0" value="0" disabled aria-label="Particle filter replay time">
+      <div class="particle-legend"><span class="particle-initial">Initial cloud</span><span class="particle-current">Current particles by initial sector</span><span class="particle-estimate">PF mean</span><span class="particle-truth">GNSS reference</span></div>
+      <p class="map-note">All 1,000 particles are rendered. Colors identify eight sectors of the original cloud and survive resampling, making ancestry loss visible. GNSS position initializes the cloud and is shown only as evaluation truth; it does not update particle weights. GNSS speed and bearing intentionally drive this first motion model.</p>
+    </section>
+
     <section class="panel map-panel" aria-labelledby="map-title">
       <div class="section-head">
         <div>

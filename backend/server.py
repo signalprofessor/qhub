@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from backend.terrain import CACHE_NAME, GNSS_DATUM_OFFSET_METRES, sampled_session
 from backend.vertical_filter import filter_session, parameters as vertical_filter_parameters
+from backend.particle_filter import run_particle_filter, parameters as particle_filter_parameters
 
 MAX_BODY_BYTES = 1_000_000
 MAX_EVENTS = 1_000
@@ -234,6 +235,33 @@ def make_handler(db_path, token):
                     self.respond(404, {"error": "session not found"})
                 else:
                     self.respond(200, {"event": event})
+            elif path == "/v1/session-particle-filter":
+                if not self.authorized():
+                    return
+                ids = parse_qs(request.query, keep_blank_values=True).get("sessionId", [])
+                if len(ids) != 1 or not ids[0] or len(ids[0]) > 200:
+                    self.respond(400, {"error": "one sessionId is required"})
+                    return
+                cache_path = Path(db_path).parent / CACHE_NAME
+                if not cache_path.is_file():
+                    self.respond(404, {"error": "local DEM cache not prepared"})
+                    return
+                events = session_events(db_path, ids[0])
+                if events is None:
+                    self.respond(413, {"error": "session exceeds 20000 events; paging is not yet supported"})
+                elif not events:
+                    self.respond(404, {"error": "session not found"})
+                else:
+                    vertical = filter_session(events, GNSS_DATUM_OFFSET_METRES)
+                    try:
+                        frames = run_particle_filter(events, vertical, cache_path)
+                    except (OSError, ValueError):
+                        self.respond(500, {"error": "local DEM cache invalid"})
+                    if not frames:
+                        self.respond(422, {"error": "session has no usable GNSS fixes inside DEM tile"})
+                    else:
+                        self.respond(200, {"frames": frames, "parameters": particle_filter_parameters(),
+                                           "note": "GNSS position initializes and evaluates only; speed and bearing drive propagation"})
             elif path == "/v1/session-vertical-filter":
                 if not self.authorized():
                     return
