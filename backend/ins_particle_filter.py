@@ -79,7 +79,8 @@ def _imu_delta_velocity(events, initial_heading):
             predicted_up=_rotate((q[0],-q[1],-q[2],-q[3]),(0.0,0.0,1.0))
             if (math.sqrt(_dot(omega,omega)) <= TILT_CORRECTION_MAX_TURN_RATE_RADIANS_PER_SECOND and
                     abs(measured_norm-GRAVITY_METRES_PER_SECOND2) <= TILT_ACCELERATION_GATE_METRES_PER_SECOND2):
-                correction=_cross(measured_up,predicted_up)
+                # q maps body vectors into navigation coordinates; rotate predicted up towards measured up.
+                correction=_cross(predicted_up,measured_up)
                 omega=[value+TILT_CORRECTION_GAIN_PER_SECOND*error for value,error in zip(omega,correction)]
             q=_mul(q,_increment(omega,dt));norm=math.sqrt(_dot(q,q));q=tuple(x/norm for x in q);gi+=1;previous_gyro=second
         specific=_rotate(q,(sample[1],sample[2],sample[3])); acceleration=(specific[0],specific[1],specific[2]-GRAVITY_METRES_PER_SECOND2)
