@@ -52,6 +52,7 @@ let dragStart = null;
 let particleReplay = null;
 let particleFrameIndex = 0;
 let particleTimer = null;
+let particleTopographyImage = null;
 
 function status(message, kind = "") {
   ui.status.textContent = message;
@@ -206,6 +207,7 @@ function drawParticleFrame() {
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = "#f8fbfa";
   context.fillRect(0, 0, canvas.width, canvas.height);
+  if (particleTopographyImage) context.drawImage(particleTopographyImage, 32, 32, 736, 736);
   context.strokeStyle = "#6e9c82";
   context.lineWidth = 2;
   context.strokeRect(32, 32, 736, 736);
@@ -224,28 +226,34 @@ function drawParticleFrame() {
   }
   trail("trueEast", "trueNorth", "rgba(22,114,88,.7)");
   trail("meanEast", "meanNorth", "rgba(196,59,77,.75)");
+  trail("mapEast", "mapNorth", "rgba(224,126,38,.68)");
   context.fillStyle = "rgba(90,110,110,.13)";
   for (const particle of (frames[0].initialParticles || frames[0].particles)) {
     const point = particlePoint(particle[0], particle[1]);
     context.fillRect(point.x - 1, point.y - 1, 2, 2);
   }
-  const colors = ["#3478bf","#31a4a0","#32a678","#8cab3f","#e1a136","#df7537","#cb4c62","#945ab5"];
   for (const particle of frame.particles) {
     const point = particlePoint(particle[0], particle[1]);
-    context.fillStyle = colors[particle[2] % colors.length] + "b8";
+    const alpha = .12 + .78 * Math.sqrt(Math.max(0, Math.min(1, particle[2])));
+    context.fillStyle = `rgba(52,120,191,${alpha})`;
     context.fillRect(point.x - 1.5, point.y - 1.5, 3, 3);
   }
   const estimate = particlePoint(frame.meanEast, frame.meanNorth);
+  const mapEstimate = particlePoint(frame.mapEast, frame.mapNorth);
   const truth = particlePoint(frame.trueEast, frame.trueNorth);
   context.fillStyle = "#c43b4d";
   context.beginPath(); context.arc(estimate.x, estimate.y, 6, 0, Math.PI * 2); context.fill();
+  context.strokeStyle = "#ffffff"; context.lineWidth = 2; context.stroke();
+  context.fillStyle = "#e07e26";
+  context.beginPath(); context.moveTo(mapEstimate.x, mapEstimate.y - 7); context.lineTo(mapEstimate.x + 7, mapEstimate.y);
+  context.lineTo(mapEstimate.x, mapEstimate.y + 7); context.lineTo(mapEstimate.x - 7, mapEstimate.y); context.closePath(); context.fill();
   context.strokeStyle = "#ffffff"; context.lineWidth = 2; context.stroke();
   context.strokeStyle = "#167258"; context.lineWidth = 3;
   context.beginPath(); context.moveTo(truth.x - 7, truth.y); context.lineTo(truth.x + 7, truth.y);
   context.moveTo(truth.x, truth.y - 7); context.lineTo(truth.x, truth.y + 7); context.stroke();
   const elapsed = (frame.utcEpochMillis - frames[0].utcEpochMillis) / 1000;
-  ui.particleStatus.textContent = `t ${elapsed.toFixed(0)} s · error ${frame.positionErrorMeters.toFixed(1)} m · ESS ${frame.effectiveParticleCount.toFixed(0)}/${particleReplay.parameters.particleCount}` +
-    ` · ${frame.survivingLineageGroups}/8 initial sectors · ${frame.resampled ? "resampled" : "no resampling"}`;
+  ui.particleStatus.textContent = `t ${elapsed.toFixed(0)} s · MMSE error ${frame.mmseErrorMeters.toFixed(1)} m · MAP error ${frame.mapErrorMeters.toFixed(1)} m` +
+    ` · ESS ${frame.effectiveParticleCount.toFixed(0)}/${particleReplay.parameters.particleCount} · ${frame.resampled ? "resampled" : "no resampling"}`;
   ui.particleFrame.value = String(particleFrameIndex);
 }
 
@@ -261,6 +269,13 @@ function scheduleParticleFrame() {
   particleTimer = setTimeout(scheduleParticleFrame, 1000 / speed);
 }
 
+async function loadParticleTopography() {
+  if (!topographyUrl && !(await loadTopography())) return;
+  const image = new Image();
+  image.onload = () => { particleTopographyImage = image; drawParticleFrame(); };
+  image.src = topographyUrl;
+}
+
 function setParticleReplay(data) {
   stopParticleReplay();
   particleReplay = data;
@@ -271,6 +286,7 @@ function setParticleReplay(data) {
   ui.particleFrame.disabled = !count;
   ui.particlePlay.disabled = !count;
   drawParticleFrame();
+  if (count) loadParticleTopography();
 }
 
 function showLatest(event, summary) {

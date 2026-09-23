@@ -51,14 +51,11 @@ def run_particle_filter(events, vertical_estimates, cache_path, particle_count=P
         return []
     rng = random.Random(RANDOM_SEED)
     first, first_east, first_north = usable[0]
-    particles = []
-    for _ in range(particle_count):
-        de, dn = rng.gauss(0, INITIAL_STD_METRES), rng.gauss(0, INITIAL_STD_METRES)
-        angle = (math.atan2(dn, de) + math.pi) / (2 * math.pi)
-        lineage = min(7, int(angle * 8))
-        particles.append((first_east + de, first_north + dn, lineage))
-    initial_particles = [[round(east, 1), round(north, 1), lineage]
-                         for east, north, lineage in particles]
+    particles = [(first_east + rng.gauss(0, INITIAL_STD_METRES),
+                  first_north + rng.gauss(0, INITIAL_STD_METRES))
+                 for _ in range(particle_count)]
+    weights = [1 / particle_count] * particle_count
+    initial_particles = [[round(east, 1), round(north, 1)] for east, north in particles]
     frames = []
     previous_millis = first["timestamp"]["utcEpochMillis"]
     cache_path = Path(cache_path)
@@ -80,42 +77,41 @@ def run_particle_filter(events, vertical_estimates, cache_path, particle_count=P
             process_std = POSITION_RW_STD_METRES_PER_SQRT_SECOND * math.sqrt(dt)
             if index:
                 particles = [(east + de + rng.gauss(0, process_std),
-                              north + dn + rng.gauss(0, process_std), lineage)
-                             for east, north, lineage in particles]
+                              north + dn + rng.gauss(0, process_std))
+                             for east, north in particles]
             observed_ground = height_by_sequence[event["sequence"]] - 0.4
             log_weights = []
-            for east, north, _ in particles:
+            for (east, north), prior_weight in zip(particles, weights):
                 terrain = sample_height(data, east, north)
-                if terrain is None:
-                    log_weights.append(-80.0)
-                else:
-                    residual = observed_ground - terrain
-                    log_weights.append(-0.5 * (residual / TERRAIN_HEIGHT_STD_METRES) ** 2)
+                log_likelihood = -80.0 if terrain is None else -0.5 * (
+                    (observed_ground - terrain) / TERRAIN_HEIGHT_STD_METRES) ** 2
+                log_weights.append(math.log(max(prior_weight, 1e-300)) + log_likelihood)
             maximum = max(log_weights)
             weights = [math.exp(value - maximum) for value in log_weights]
             total = sum(weights)
-            if not math.isfinite(total) or total <= 0:
-                weights = [1 / particle_count] * particle_count
-            else:
-                weights = [value / total for value in weights]
+            weights = ([1 / particle_count] * particle_count if not math.isfinite(total) or total <= 0
+                       else [value / total for value in weights])
             mean_east = sum(p[0] * w for p, w in zip(particles, weights))
             mean_north = sum(p[1] * w for p, w in zip(particles, weights))
+            map_index = max(range(particle_count), key=weights.__getitem__)
+            map_east, map_north = particles[map_index]
             ess = 1 / sum(weight * weight for weight in weights)
+            maximum_weight = max(weights)
             resampled = ess < particle_count * RESAMPLE_ESS_FRACTION
-            if resampled:
-                particles = _systematic_resample(particles, weights, rng)
-            lineage_count = len({particle[2] for particle in particles})
             frames.append({
-                "utcEpochMillis": millis,
-                "sequence": event["sequence"],
+                "utcEpochMillis": millis, "sequence": event["sequence"],
                 "trueEast": round(true_east, 2), "trueNorth": round(true_north, 2),
                 "meanEast": round(mean_east, 2), "meanNorth": round(mean_north, 2),
-                "positionErrorMeters": round(math.hypot(mean_east - true_east, mean_north - true_north), 2),
+                "mapEast": round(map_east, 2), "mapNorth": round(map_north, 2),
+                "mmseErrorMeters": round(math.hypot(mean_east - true_east, mean_north - true_north), 2),
+                "mapErrorMeters": round(math.hypot(map_east - true_east, map_north - true_north), 2),
                 "effectiveParticleCount": round(ess, 1), "resampled": resampled,
-                "survivingLineageGroups": lineage_count,
-                "particles": [[round(east, 1), round(north, 1), lineage]
-                              for east, north, lineage in particles],
+                "particles": [[round(east, 1), round(north, 1), round(weight / maximum_weight, 4)]
+                              for (east, north), weight in zip(particles, weights)],
             })
+            if resampled:
+                particles = _systematic_resample(particles, weights, rng)
+                weights = [1 / particle_count] * particle_count
     if frames:
         frames[0]["initialParticles"] = initial_particles
     return frames
