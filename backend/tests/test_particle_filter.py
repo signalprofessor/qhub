@@ -4,6 +4,7 @@ from pathlib import Path
 
 from backend.particle_filter import run_particle_filter
 from backend.gyro_particle_filter import run_gyro_particle_filter
+from backend.ins_particle_filter import run_ins_particle_filter
 from backend.terrain import CACHE_NAME, SIZE
 
 
@@ -59,3 +60,25 @@ class ParticleFilterTest(unittest.TestCase):
         self.assertEqual(len(first), 3)
         self.assertEqual(len(first[0]["particles"]), 100)
         self.assertIn("meanSpeedMetersPerSecond", first[-1])
+
+
+    def test_ins_velocity_replay_marginalizes_velocity(self):
+        samples = [[int(i * 1e7), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 3] for i in range(901)]
+        accel = [[int(i * 1e7), 0.0, 0.0, 9.80665, None, None, None, 3] for i in range(901)]
+        events = [
+            {"sequence": 0, "eventType": "navigation.imu_batch", "timestamp": {"monotonicNanos": 0, "utcEpochMillis": 0}, "payload": {"sensor": "gyroscope", "samples": samples}},
+            {"sequence": 1, "eventType": "navigation.imu_batch", "timestamp": {"monotonicNanos": 0, "utcEpochMillis": 0}, "payload": {"sensor": "accelerometer", "samples": accel}},
+        ]
+        for sequence, second in enumerate((6, 7, 8), start=2):
+            event = gnss(sequence, second)
+            event["payload"].update({"sensorElapsedRealtimeNanos": int(second * 1e9), "speedMetersPerSecond": 3.0, "bearingDegrees": 0.0, "bearingAccuracyDegrees": 1.0})
+            events.append(event)
+        vertical = [{"sequence": i, "heightMeters": 0.8} for i in range(2, 5)]
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / CACHE_NAME
+            with cache.open("wb") as file:
+                file.truncate(SIZE * SIZE * 4)
+            replay = run_ins_particle_filter(events, vertical, cache, .8, particle_count=100)
+        self.assertEqual(len(replay), 3)
+        self.assertEqual(len(replay[0]["particles"]), 100)
+        self.assertIn("meanSpeedMetersPerSecond", replay[-1])

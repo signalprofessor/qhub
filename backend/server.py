@@ -12,6 +12,7 @@ from backend.terrain import CACHE_NAME, GNSS_DATUM_OFFSET_METRES, sampled_sessio
 from backend.vertical_filter import filter_session, parameters as vertical_filter_parameters
 from backend.particle_filter import run_particle_filter, parameters as particle_filter_parameters
 from backend.gyro_particle_filter import run_gyro_particle_filter, parameters as gyro_particle_filter_parameters
+from backend.ins_particle_filter import run_ins_particle_filter, parameters as ins_particle_filter_parameters
 
 MAX_BODY_BYTES = 1_000_000
 MAX_EVENTS = 1_000
@@ -246,7 +247,7 @@ def make_handler(db_path, token):
                 if len(ids) != 1 or not ids[0] or len(ids[0]) > 200:
                     self.respond(400, {"error": "one sessionId is required"})
                     return
-                if len(models) != 1 or models[0] not in ("gnss_velocity", "gyro_speed"):
+                if len(models) != 1 or models[0] not in ("gnss_velocity", "gyro_speed", "ins_velocity"):
                     self.respond(400, {"error": "unknown particle-filter model"})
                     return
                 try:
@@ -268,7 +269,11 @@ def make_handler(db_path, token):
                 else:
                     vertical = filter_session(events, GNSS_DATUM_OFFSET_METRES)
                     try:
-                        if models[0] == "gyro_speed":
+                        if models[0] == "ins_velocity":
+                            frames = run_ins_particle_filter(events, vertical, cache_path, ground_clearance)
+                            parameters = ins_particle_filter_parameters()
+                            note = "GNSS supplies the known initial state and evaluation truth only; IMU preintegration drives a marginalized Gaussian east/north velocity state"
+                        elif models[0] == "gyro_speed":
                             frames = run_gyro_particle_filter(events, vertical, cache_path, ground_clearance)
                             parameters = gyro_particle_filter_parameters()
                             note = "GNSS supplies the known initial state and evaluation truth only; raw gyro and a particle speed state drive propagation"
